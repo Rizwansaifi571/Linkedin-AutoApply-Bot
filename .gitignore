@@ -1,0 +1,24 @@
+__pycache__
+.pytest_cache
+.vscode
+.idea
+
+all excels
+all resumes
+logs
+
+old
+
+# NOTE: config/*.py are TRACKED on purpose - they are the shipped defaults and
+# the documentation of every option. Listing them here did nothing (gitignore
+# never applies to an already-tracked file) while implying your edits were safe.
+# Your own settings belong in user_config.json (ignored below); the control
+# panel writes it, config/_overrides.py applies it over these defaults, and the
+# in-app updater copies your live values into it before it pulls.
+.venv
+apikeys.py
+
+# Local control-panel runtime files — contain your credentials/answers, never commit
+user_config.json
+.bot_run.log
+.bot_run.pid

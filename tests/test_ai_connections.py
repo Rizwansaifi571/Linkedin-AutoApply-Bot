@@ -53,6 +53,23 @@ class _StructuredModel(_StubModel):
         return _Structured(self._payload)
 
 
+class _TransientStructuredModel(_StubModel):
+    '''A model that simulates a provider outage during structured extraction.'''
+    def __init__(self):
+        super().__init__("fallback must not be called")
+        self.fallback_called = False
+
+    def with_structured_output(self, schema):
+        class _FailingStructured:
+            def invoke(self, prompt):
+                raise RuntimeError("503 UNAVAILABLE")
+        return _FailingStructured()
+
+    def invoke(self, prompt):
+        self.fallback_called = True
+        return super().invoke(prompt)
+
+
 # ------------------------------- provider mapping ---------------------------
 @pytest.mark.parametrize("name, expected", [
     ("gemini", "google_genai"),
@@ -131,6 +148,18 @@ def test_extract_skills_falls_back_to_json_parsing():
            ' "required_skills": [], "nice_to_have": []}')
     client = C.AIClient(_StubModel(raw))
     assert C.extract_skills(client, "Python role")["tech_stack"] == ["Python"]
+
+
+def test_extract_skills_does_not_retry_provider_outage(monkeypatch):
+    model = _TransientStructuredModel()
+    client = C.AIClient(model)
+    monkeypatch.setattr(C, "_ai_unavailable", False)
+
+    result = C.extract_skills(client, "Python role")
+
+    assert "error" in result
+    assert model.fallback_called is False
+    assert C._ai_unavailable is True
 
 
 # ------------------------------- client lifecycle ---------------------------

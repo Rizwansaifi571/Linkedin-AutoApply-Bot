@@ -51,6 +51,10 @@ def _isolate_question_answering(monkeypatch):
     bot = sys.modules.get("runAiBot")
     if bot is not None:
         monkeypatch.setattr(bot, "fallback_yes_and_1", False, raising=False)
+        monkeypatch.setattr(bot, "overwrite_previous_answers", False, raising=False)
+        # The user's own question_answers.csv must not decide test outcomes; tests that
+        # exercise the bank set their own.
+        monkeypatch.setattr(bot, "question_answer_bank", {}, raising=False)
         monkeypatch.setattr(bot, "question_review_file", "", raising=False)
 
 

@@ -1324,6 +1324,9 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         elif is_skill_experience:
                             answer = "0"
                             print_lg(f'AI did not answer "{label_org}". Using 0 as the honest numeric fallback.')
+                        elif prev_answer and not rejected:
+                            # overwrite_previous_answers found nothing better: keep LinkedIn's value.
+                            answer = prev_answer
                         else:
                             print_lg(f'No answer for the text question "{label_org}". Leaving it empty - add it to all excels/question_answers.csv.')
                             randomly_answered_questions.add((label_org, "text"))
@@ -1364,10 +1367,15 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                     elif fallback_answer(label_org) is not None:
                         answer = fallback_answer(label_org)
                         print_lg(f'No CSV/AI answer for "{label_org}". Using fallback "{answer}".')
+                    elif prev_answer:
+                        answer = prev_answer     # nothing better: keep LinkedIn's value
                     else:
                         randomly_answered_questions.add((label_org, "textarea"))
                         unanswered_questions.add(label_org)
                     record_question_for_review(label_org, answer, "textarea")
+            else:
+                # Not overwriting: the clear-and-type below used to wipe the prefilled text.
+                answer = prev_answer
             try:
                 text_area.clear()
                 human_type(text_area, answer)

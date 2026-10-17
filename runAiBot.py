@@ -456,10 +456,14 @@ def get_page_info() -> tuple[WebElement | None, int | None]:
     Function to get pagination element and current page number
     '''
     try:
-        pagination_element = try_find_by_classes(driver, ["jobs-search-pagination__pages", "artdeco-pagination", "artdeco-pagination__pages"])
+        try:
+            pagination_element = try_find_by_classes(driver, ["jobs-search-pagination__pages", "artdeco-pagination", "artdeco-pagination__pages"])
+        except ValueError:
+            # Current layout: <ul data-testid="pagination-controls-list"> of "Page N" buttons.
+            pagination_element = driver.find_element(By.CSS_SELECTOR, "ul[data-testid='pagination-controls-list']")
         scroll_to_view(driver, pagination_element)
         # ".//" keeps this inside the pagination element; a leading "//" searches the whole document.
-        active_page = pagination_element.find_element(By.XPATH, ".//button[contains(@class, 'active')]").text.strip()
+        active_page = pagination_element.find_element(By.XPATH, ".//button[contains(@class, 'active') or @aria-current='true']").text.strip()
         current_page = int(active_page) if active_page.isdigit() else 1
     except Exception as e:
         logger.warning("Failed to find Pagination element, hence couldn't scroll till end!")
@@ -482,6 +486,8 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
     * skip: A boolean flag to skip this job
     '''
     skip = False
+    if (job.get_dom_attribute('componentkey') or '').startswith(new_job_card_prefix):
+        return get_new_card_details(job, blacklisted_companies, rejected_jobs)
     # LinkedIn has moved between <li> cards and direct job links in the result
     # pane.  Normalise both representations into a card plus its title link.
     card = job
@@ -549,6 +555,56 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
         raise
     buffer(click_gap)
     return (job_id,title,company,work_location,work_style,skip)
+
+
+def split_work_location(work_location: str) -> tuple[str, str]:
+    '''"Navi Mumbai (On-site)" -> ("Navi Mumbai", "On-site").'''
+    if '(' in work_location and ')' in work_location:
+        return work_location[:work_location.rfind('(')].strip(), work_location[work_location.rfind('(')+1:work_location.rfind(')')]
+    return work_location, "Unknown"
+
+
+def get_new_card_details(card: WebElement, blacklisted_companies: set, rejected_jobs: set) -> tuple[str, str, str, str, str, bool]:
+    '''
+    `get_job_main_details` for the current search-results card: a div[role=button] whose
+    first three <p> are title, company and location. Clicks the card and waits until the
+    right pane shows THIS job, so the description read next is never the previous job's.
+    '''
+    job_id = card.get_dom_attribute('componentkey').removeprefix(new_job_card_prefix)
+    # The title <p> holds the title twice (screen-reader copy + aria-hidden visual copy).
+    lines = driver.execute_script("""return [...arguments[0].querySelectorAll('p')].map(p => {
+        const visual = p.querySelector('span[aria-hidden="true"]'); return (visual || p).innerText; });""", card)
+    lines = [clean_label(line) for line in lines]
+    lines = [line for line in lines if line]
+    title = lines[0] if lines else "Unknown"
+    company = lines[1] if len(lines) > 1 else "Unknown"
+    work_location, work_style = split_work_location(lines[2] if len(lines) > 2 else "Unknown")
+    skip = False
+    if company in blacklisted_companies:
+        print_lg(f'Skipping "{title} | {company}" job (Blacklisted Company). Job ID: {job_id}!')
+        skip = True
+    elif job_id in rejected_jobs:
+        print_lg(f'Skipping previously rejected "{title} | {company}" job. Job ID: {job_id}!')
+        skip = True
+    elif any(line == "Applied" or line.startswith("Applied ") for line in lines):
+        print_lg(f'Already applied to "{title} | {company}" job. Job ID: {job_id}!')
+        skip = True
+    if not skip:
+        scroll_to_view(driver, card)
+        try:
+            card.click()
+        except ElementClickInterceptedException:
+            driver.execute_script("arguments[0].click();", card)
+        try:
+            # The section's heading renders before its text, so wait for real content.
+            WebDriverWait(driver, 15).until(lambda d: d.execute_script(
+                "const e = document.querySelector(arguments[0]); return !!e && e.innerText.trim().length > 40;",
+                f"[componentkey='JobDetails_AboutTheJob_{job_id}']"))
+        except TimeoutException:
+            logger.warning('The details of "%s | %s" did not load. Job ID: %s', title, company, job_id)
+            skip = True
+        buffer(click_gap)
+    return (job_id, title, company, work_location, work_style, skip)
 
 
 def find_bad_word(text: str, words: list[str]) -> str | None:
@@ -675,9 +731,33 @@ def match_answer_to_option(answer: str | None, option_texts: list[str]) -> int |
 
 
 # Function to check for Blacklisted words in About Company
-def check_blacklist(rejected_jobs: set, job_id: str, company: str, blacklisted_companies: set) -> tuple[set, set, WebElement] | ValueError:
-    jobs_top_card = try_find_by_classes(driver, ["job-details-jobs-unified-top-card__primary-description-container","job-details-jobs-unified-top-card__primary-description","jobs-unified-top-card__primary-description","jobs-details__main-content"])
-    about_company_org = find_by_class(driver, "jobs-company__box")
+class BlacklistedCompany(ValueError):
+    '''About Company contains one of `about_company_bad_words`.'''
+
+
+def find_job_top_card(job_id: str) -> WebElement:
+    '''The detail pane's header (title, location, "posted ... ago"), old or new layout.'''
+    try:
+        return try_find_by_classes(driver, ["job-details-jobs-unified-top-card__primary-description-container","job-details-jobs-unified-top-card__primary-description","jobs-unified-top-card__primary-description","jobs-details__main-content"])
+    except ValueError:
+        # Current layout: the nearest ancestor of "About the job" that also holds the header.
+        return driver.find_element(By.XPATH,
+            f"//*[@componentkey='JobDetails_AboutTheJob_{job_id}']/ancestor::*[.//p[contains(., ' ago')]][1]")
+
+
+def find_about_company(job_id: str) -> WebElement:
+    try:
+        return find_by_class(driver, "jobs-company__box", 1)
+    except TimeoutException:
+        return driver.find_element(By.CSS_SELECTOR, f"[componentkey='JobDetails_AboutTheCompany_{job_id}']")
+
+
+def check_blacklist(rejected_jobs: set, job_id: str, company: str, blacklisted_companies: set) -> tuple[set, set, WebElement]:
+    '''Raises `BlacklistedCompany` for a bad word; any other exception only means the
+    section could not be read. A plain ValueError used to mean both, so every job whose
+    top card had a new class name was skipped as "blacklisted".'''
+    jobs_top_card = find_job_top_card(job_id)
+    about_company_org = find_about_company(job_id)
     scroll_to_view(driver, about_company_org)
     about_company_org = about_company_org.text
     about_company = about_company_org.lower()
@@ -692,7 +772,7 @@ def check_blacklist(rejected_jobs: set, job_id: str, company: str, blacklisted_c
         if word:
             rejected_jobs.add(job_id)
             blacklisted_companies.add(company)
-            raise ValueError(f'\n"{about_company_org}"\n\nContains "{word}".')
+            raise BlacklistedCompany(f'\n"{about_company_org}"\n\nContains "{word}".')
     buffer(click_gap)
     scroll_to_view(driver, jobs_top_card)
     return rejected_jobs, blacklisted_companies, jobs_top_card
@@ -740,6 +820,9 @@ def get_job_description(
         # LinkedIn has replaced jobs-box__html-content in the current detail
         # pane. Prefer semantic containers so this works across both layouts.
         description_candidates = (
+            # Current layout. Only the clicked job's details are rendered, so this is unique.
+            "//*[starts-with(@componentkey, 'JobDetails_AboutTheJob_')]//*[@data-testid='expandable-text-box']",
+            "//*[starts-with(@componentkey, 'JobDetails_AboutTheJob_')]",
             "//div[@id='job-details']",
             "//div[contains(@class, 'jobs-description__content')]",
             "//div[contains(@class, 'jobs-box__html-content')]",
@@ -747,16 +830,22 @@ def get_job_description(
             "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'about the job')]]",
         )
         description_element = None
+        description_text = ""
         for xpath in description_candidates:
-            elements = driver.find_elements(By.XPATH, xpath)
-            description_element = next((element for element in elements if element.is_displayed()), None)
-            if description_element:
-                break
+            for element in driver.find_elements(By.XPATH, xpath):
+                if not element.is_displayed(): continue
+                description_element = element
+                # innerText includes the part hidden behind "Show more"; .text only the visible lines.
+                description_text = (element.get_attribute("innerText") or element.text or "").strip()
+                if description_text: break
+            if description_text: break
         if not description_element:
             raise NoSuchElementException("LinkedIn job description panel was not found")
-        jobDescription = description_element.text.strip()
-        if not jobDescription:
+        if not description_text:
+            # Leave jobDescription as "Unknown" so the except below skips the job: an empty
+            # string used to count as "read", and the bad-word filters ran on nothing.
             raise NoSuchElementException("LinkedIn job description panel was empty")
+        jobDescription = description_text
         jobDescriptionLow = jobDescription.lower()
         bad_word = find_bad_word(jobDescription, bad_words)
         if bad_word:
@@ -866,9 +955,9 @@ def resume_binary_answer(question: str, options: list[str]) -> str | None:
 def answer_questions(modal: WebElement, questions_list: set, work_location: str, job_description: str | None = None ) -> set:
     # Get all questions from the page
      
-    # The container class churns (it is `fb-dash-form-element` today, paired with a random
-    # class). `data-test-form-element` is the attribute that has survived every restyle.
-    all_questions = modal.find_elements(By.XPATH, ".//div[@data-test-form-element]")
+    # Old form: `data-test-form-element` containers. Current form: no hook at all, see
+    # `form_question_elements`.
+    all_questions = form_question_elements(modal)
     # Per-pass, not cumulative: the caller compares consecutive passes to spot a stall.
     unanswered_questions.clear()
     # all_list_questions = modal.find_elements(By.XPATH, ".//div[@data-test-text-entity-list-form-component]")
@@ -886,8 +975,13 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
             label_org = "Unknown"
             try:
                 label = Question.find_element(By.TAG_NAME, "label")
-                label_org = label.find_element(By.TAG_NAME, "span").text
+                # Old form wraps the text in a <span>; the current one in a <div>.
+                spans = label.find_elements(By.TAG_NAME, "span")
+                label_org = clean_label(spans[0].text if spans else label.text) or "Unknown"
             except: pass
+            if label_org == "Unknown":
+                try: label_org = clean_label(select.get_attribute("aria-label")) or "Unknown"
+                except: pass
             # No default answer. `answer = 'Yes'` here meant an unclassified dropdown -
             # "Do you have an active security clearance?" - was answered Yes and submitted,
             # the same defect already removed from the radio branch below.
@@ -901,7 +995,8 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 optionsText = [option.text for option in select.options]
                 options = "".join([f' "{option}",' for option in optionsText])
             prev_answer = selected_option
-            if overwrite_previous_answers or selected_option == "Select an option":
+            # The current form's placeholder is an empty hidden option, not "Select an option".
+            if overwrite_previous_answers or selected_option.strip() in ("", "Select an option"):
                 # Pick a sensible answer for the dropdown from the question label.
                 # Whole words only, and work authorization first: "Are you currently legally
                 # authorized to work in the United States?" contains "state" and used to be
@@ -909,8 +1004,13 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 auth_answer = work_authorization_answer(label)
                 if auth_answer is not None:
                     answer = auth_answer
+                elif label_has(label, 'phone') and label_has(label, 'code') and not prev_answer.strip():
+                    # Required on the current form and left empty: options read "India (+91)".
+                    optionsText = [option.text for option in select.options]
+                    answer = next((name for name in (country, search_location) if match_answer_to_option(name, optionsText) is not None), None)
                 elif label_has(label, 'email', 'phone'):
-                    answer = prev_answer
+                    # The only options are the user's own addresses / numbers.
+                    answer = prev_answer if prev_answer.strip() else next((o.text for o in select.options if o.text.strip()), None)
                 elif label_has(label, 'gender', 'sex', 'sexual orientation'):
                     answer = gender
                 elif label_has(label, 'disability'):
@@ -968,12 +1068,22 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
         
         # Check if it's a radio Question
         radio = try_xp(Question, './/fieldset[@data-test-form-builder-radio-button-form-component="true"]', False)
+        if not radio and str(getattr(Question, "tag_name", "")).lower() == "fieldset" and Question.find_elements(By.XPATH, ".//input[@type='radio']"):
+            radio = Question     # current form: a plain <fieldset> of radios
         if radio:
             prev_answer = None
             label = try_xp(radio, './/span[@data-test-form-builder-radio-button-form-component__title]', False)
-            try: label = find_by_class(label, "visually-hidden", 2.0)
-            except: pass
-            label_org = label.text if label else "Unknown"
+            if label:
+                try: label = find_by_class(label, "visually-hidden", 2.0)
+                except: pass
+                label_org = label.text
+            else:
+                # Current form: no title element; every radio carries the question as aria-label.
+                legend = try_xp(radio, './/legend', False)
+                first_radio = try_xp(radio, ".//input[@type='radio']", False)
+                label_org = clean_label(legend.text if legend else "") or \
+                            clean_label(first_radio.get_attribute("aria-label") if first_radio else "") or clean_label(radio.text)
+            label_org = clean_label(label_org) or "Unknown"
             # No default answer. `answer = 'Yes'` here meant an unclassified label - "Do you
             # have an active security clearance?", "Are you a US citizen?" - was submitted as
             # a Yes on a real application.
@@ -988,8 +1098,12 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
             for option in options:
                 id = option.get_attribute("id")
                 option_label = try_xp(radio, f'.//label[@for="{id}"]', False)
-                option_texts.append(option_label.text if option_label else "")
-                options_labels.append( f'"{option_label.text if option_label else "Unknown"}"<{option.get_attribute("value")}>' ) # Saving option as "label <value>"
+                # Current form: the <label> is empty and the option text ("Yes") is a sibling <p>;
+                # the input's aria-label is the QUESTION, so it is only the last resort.
+                option_text = clean_label(option_label.text if option_label else "") or \
+                              clean_label(nearest_text(option, radio)) or clean_label(option.get_attribute("aria-label"))
+                option_texts.append(option_text)
+                options_labels.append( f'"{option_text or "Unknown"}"<{option.get_attribute("value")}>' ) # Saving option as "label <value>"
                 if option.is_selected(): prev_answer = options_labels[-1]
                 label_org += f' {options_labels[-1]},'
 
@@ -1030,19 +1144,24 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         randomly_answered_questions.add((f'{label_org} ]',"radio"))
                         unanswered_questions.add(f'{label_org} ]')
                     else:
-                        actions.move_to_element(options[matched]).click().perform()
+                        try: actions.move_to_element(options[matched]).click().perform()
+                        except WebDriverException:
+                            # The current form's radio inputs can be visually hidden (no size).
+                            driver.execute_script("arguments[0].click();", options[matched])
                         answer = options_labels[matched]
             else: answer = prev_answer
             questions_list.add((label_org+" ]", answer, "radio", prev_answer))
             continue
         
         # Check if it's a text question
-        text = try_xp(Question, ".//input[@type='text']", False)
-        if text: 
+        text = try_xp(Question, ".//input[@type='text']", False) or \
+               try_xp(Question, ".//input[@type='tel' or @type='number' or @type='email' or @type='url' or not(@type)]", False)
+        if text:
             label = try_xp(Question, ".//label[@for]", False)
             try: label = label.find_element(By.CLASS_NAME,'visually-hidden')
             except: pass
-            label_org = label.text if label else "Unknown"
+            # Current form: many inputs have no <label>; the question is their aria-label.
+            label_org = clean_label(label.text if label else "") or clean_label(text.get_attribute("aria-label")) or "Unknown"
             answer = "" # years_of_experience
             label = label_org.lower()
 
@@ -1147,7 +1266,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
         text_area = try_xp(Question, ".//textarea", False)
         if text_area:
             label = try_xp(Question, ".//label[@for]", False)
-            label_org = label.text if label else "Unknown"
+            label_org = clean_label(label.text if label else "") or clean_label(text_area.get_attribute("aria-label")) or "Unknown"
             label = label_org.lower()
             answer = ""
             prev_answer = text_area.get_attribute("value")
@@ -1176,9 +1295,9 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 # LinkedIn replaces the textarea after clear(), so reacquire the matching
                 # form element before typing the AI response.
                 refreshed_text_area = None
-                for candidate in modal.find_elements(By.XPATH, ".//div[@data-test-form-element]"):
+                for candidate in form_question_elements(modal):
                     try:
-                        candidate_label = candidate.find_element(By.XPATH, ".//label[@for]").text
+                        candidate_label = clean_label(candidate.find_element(By.XPATH, ".//label[@for]").text)
                         if candidate_label == label_org:
                             refreshed_text_area = candidate.find_element(By.XPATH, ".//textarea")
                             break
@@ -1199,11 +1318,13 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
             # `follow_company()` already drives it from `follow_companies`. Ticking it here
             # too would fight that setting, so leave it to its one owner.
             if checkbox.get_attribute("id") == "follow-company-checkbox": continue
-            label = try_xp(Question, ".//span[@class='visually-hidden']", False)
-            label_org = label.text if label else "Unknown"
+            label = try_xp(Question, ".//span[@class='visually-hidden']", False) or try_xp(Question, ".//legend", False)
+            label_org = clean_label(label.text if label else "") or "Unknown"
             label = label_org.lower()
             answer = try_xp(Question, ".//label[@for]", False)  # Sometimes multiple checkboxes are given for 1 question, Not accounted for that yet
-            answer = answer.text if answer else "Unknown"
+            # Current form: the <label> is empty and the option text sits beside it.
+            answer = clean_label(answer.text if answer else "") or clean_label(checkbox.get_attribute("aria-label")) or clean_label(Question.text) or "Unknown"
+            if label_org == "Unknown": label_org = answer
             prev_answer = checkbox.is_selected()
             checked = prev_answer
             if not prev_answer:
@@ -1308,8 +1429,92 @@ easy_apply_locators = [
     ("in-app apply URL flag", ".//a[contains(@href, 'openSDUIApplyFlow=true')]"),
     ("aria-label", ".//button[contains(@class,'jobs-apply-button') and contains(@aria-label, 'Easy Apply')]"),
     ("button label", ".//button[contains(@class,'jobs-apply-button')][.//span[contains(normalize-space(.), 'Easy Apply')]]"),
+    # Current /jobs/search-results/ layout: obfuscated classes, only the aria-label is stable.
+    ("search-results aria-label", "//button[contains(@aria-label, 'Easy Apply')]"),
     ("apply button", apply_button_xpath),
 ]
+
+# Current /jobs/search-results/ layout (measured 2026-10-18). Every class name is obfuscated
+# and changes per build, so these key off `componentkey`, `data-testid` and the <dialog>.
+new_job_card_css = "div[role='button'][componentkey^='job-card-component-ref-']"
+new_job_card_prefix = "job-card-component-ref-"
+# The Easy Apply form is a native <dialog open> whose header reads "Apply to <company>".
+easy_apply_modal_xpath = ("//div[contains(@class,'jobs-easy-apply-modal')] | "
+                          "//dialog[@open and (.//*[contains(@data-sdui-screen, 'easyapply')] or "
+                          ".//h2[starts-with(normalize-space(.), 'Apply to')])]")
+
+
+def find_easy_apply_modal(time: float = 5.0) -> WebElement:
+    '''The visible Easy Apply modal, old or new layout. Raises TimeoutException if none.'''
+    return wait_for_displayed(driver, easy_apply_modal_xpath, time)
+
+
+def application_was_submitted(time: float = 10.0) -> bool:
+    '''
+    True once LinkedIn has accepted the application: no "Submit application" button is
+    visible any more. Clicking Submit with a required field empty leaves the form open
+    with an error, and that used to be recorded as applied.
+    '''
+    try:
+        WebDriverWait(driver, time).until(lambda d: not pick_first_displayed(
+            d.find_elements(By.XPATH, "//dialog[@open]" + submit_button_xpath[1:] + " | "
+                            "//div[contains(@class,'jobs-easy-apply-modal')]" + submit_button_xpath[1:])))
+        return True
+    except TimeoutException:
+        return False
+    except WebDriverException:
+        return False
+
+
+def clean_label(text: str | None) -> str:
+    '''First line of a form label without the required-field "*". LinkedIn renders the
+    label twice (visible + screen-reader copy), so later lines are duplicates.'''
+    text = (text or "").strip()
+    return text.split("\n")[0].strip().rstrip("*").strip() if text else ""
+
+
+def nearest_text(element: WebElement, boundary: WebElement) -> str:
+    '''Text of the closest ancestor of `element` (below `boundary`) that has any text.'''
+    try:
+        return driver.execute_script('''
+            let e = arguments[0].parentElement;
+            while (e && e !== arguments[1] && !(e.innerText || '').trim()) e = e.parentElement;
+            return e && e !== arguments[1] ? e.innerText : '';''', element, boundary) or ""
+    except Exception:
+        return ""
+
+
+def form_question_elements(modal: WebElement) -> list[WebElement]:
+    '''
+    One container per question in the Easy Apply form. The old form marked each with
+    `data-test-form-element`; the current one has no such hook, so each container is the
+    nearest ancestor holding the control's <label for>, and each radio/checkbox group is
+    its <fieldset>. The resume chooser and the "Follow <company>" box are not questions.
+    '''
+    old = modal.find_elements(By.XPATH, ".//div[@data-test-form-element]")
+    if old: return old
+    return driver.execute_script('''
+        const root = arguments[0], out = [], seen = new Set();
+        const add = e => { if (e && !seen.has(e)) { seen.add(e); out.push(e); } };
+        const isResume = fs => fs.querySelector('#easyApplyUploadedResumeRef') ||
+            [...fs.querySelectorAll('input[type=radio]')].some(r => /\\.(pdf|docx?)$/i.test(r.getAttribute('aria-label') || ''));
+        root.querySelectorAll('fieldset').forEach(fs => {
+            if (!isResume(fs) && fs.querySelector('input[type=radio], input[type=checkbox]')) add(fs);
+        });
+        root.querySelectorAll('select, textarea, input').forEach(c => {
+            if (c.closest('fieldset')) return;
+            const t = (c.getAttribute('type') || 'text').toLowerCase();
+            if (['hidden', 'file', 'radio', 'submit', 'button', 'search'].includes(t)) return;
+            if (t === 'checkbox' && /^follow /i.test(c.getAttribute('aria-label') || '')) return;
+            let e = c.parentElement;
+            while (e && e !== root) {
+                const hasLabel = c.id && e.querySelector('label[for="' + CSS.escape(c.id) + '"]');
+                if (hasLabel && (e.innerText || '').trim()) break;
+                e = e.parentElement;
+            }
+            add(e && e !== root ? e : c.parentElement);
+        });
+        return out;''', modal)
 
 
 def follow_company(modal: WebDriver = driver) -> None:
@@ -1320,6 +1525,10 @@ def follow_company(modal: WebDriver = driver) -> None:
         follow_checkbox_input = try_xp(modal, ".//input[@id='follow-company-checkbox' and @type='checkbox']", False)
         if follow_checkbox_input and follow_checkbox_input.is_selected() != follow_companies:
             try_xp(modal, ".//label[@for='follow-company-checkbox']")
+        # Current layout: no id, the box is identified by its "Follow <company> ..." aria-label.
+        follow_checkbox_input = try_xp(modal, ".//input[@type='checkbox' and starts-with(@aria-label, 'Follow ')]", False)
+        if follow_checkbox_input and follow_checkbox_input.is_selected() != follow_companies:
+            driver.execute_script("arguments[0].click();", follow_checkbox_input)
     except Exception as e:
         logger.warning("Failed to update follow companies checkbox! %s", e)
     
@@ -1397,7 +1606,7 @@ discard_button_xpath = ".//button[@data-control-name='discard_application_confir
 
 def easy_apply_modal_is_open() -> bool:
     '''True while an Easy Apply modal is still on screen and swallowing every click.'''
-    try: return any(m.is_displayed() for m in driver.find_elements(By.CLASS_NAME, "jobs-easy-apply-modal"))
+    try: return pick_first_displayed(driver.find_elements(By.XPATH, easy_apply_modal_xpath)) is not None
     except Exception: return False
 
 # Function to discard the job application
@@ -1411,7 +1620,8 @@ def discard_job() -> None:
     dialog animation (2s was too short), click Discard, and verify the modal is gone.
     ESCAPE stays as the fallback.
     '''
-    for dismiss in (lambda: try_xp(driver, ".//button[@data-test-modal-close-btn]"),
+    for dismiss in (lambda: try_xp(driver, ".//button[@data-test-modal-close-btn]") or
+                            try_xp(driver, "//dialog[@open]//button[@aria-label='Dismiss']"),
                     lambda: actions.send_keys(Keys.ESCAPE).perform()):
         try: dismiss()
         except Exception as e: logger.warning("Couldn't dismiss the application modal. %s", e)
@@ -1485,31 +1695,38 @@ def _search_url(query: str) -> str:
 
 
 def visible_job_results() -> list[WebElement]:
-    '''Return only job-title controls in the left results pane.
+    '''Return the job cards of the left results pane, in order.
 
-    The current page also has job-view links in the right detail pane for
-    work-style and salary tags.  Selecting every /jobs/view/ link made the bot
-    click "Remote" and "Full-time" as if they were separate jobs.
+    The current /jobs/search-results/ cards are not links at all: each is a
+    `div[role=button]` whose `componentkey` carries the job id. Every link on
+    that page belongs to the right detail pane ("Share negative feedback",
+    "Remote", "Show all"...), and treating those as jobs made the bot open the
+    same job over and over.
     '''
     legacy_cards = [card for card in driver.find_elements(
         By.XPATH, "//li[@data-occludable-job-id]") if card.is_displayed()]
     if legacy_cards:
         return legacy_cards
-
-    excluded_labels = {"remote", "hybrid", "on-site", "onsite", "full-time", "part-time", "easy apply", "apply", "save"}
-    results = []
-    for link in driver.find_elements(By.XPATH, "//a[contains(@href, '/jobs/view/') or contains(@href, 'currentJobId=')]"):
+    cards, seen = [], set()
+    for card in driver.find_elements(By.CSS_SELECTOR, new_job_card_css):
         try:
-            label = (link.get_attribute('aria-label') or link.text or '').strip().casefold()
-            bounds = driver.execute_script(
-                "const r=arguments[0].getBoundingClientRect(); return [r.left,r.top,r.width,r.height,window.innerWidth];",
-                link)
-            in_left_results_pane = bounds[0] >= 0 and bounds[0] < bounds[4] * 0.45 and bounds[1] > 120
-            if link.is_displayed() and label and label not in excluded_labels and in_left_results_pane:
-                results.append(link)
-        except (StaleElementReferenceException, WebDriverException):
+            job_id = (card.get_dom_attribute('componentkey') or '').removeprefix(new_job_card_prefix)
+            if job_id and job_id not in seen and card.is_displayed():
+                seen.add(job_id)
+                cards.append(card)
+        except StaleElementReferenceException:
             continue
-    return results
+    return cards
+
+
+def first_job_card_key() -> str | None:
+    '''Job id (or legacy card id) of the first result; changes when a new page loads.'''
+    try:
+        cards = visible_job_results()
+        if not cards: return None
+        return cards[0].get_dom_attribute('componentkey') or cards[0].get_dom_attribute('data-occludable-job-id')
+    except WebDriverException:
+        return None
 
 
 def apply_to_jobs(search_terms: list[str]) -> None:
@@ -1581,9 +1798,10 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                     questions_list = None
                     screenshot_name = "Not Available"
 
+                    jobs_top_card = None
                     try:
                         rejected_jobs, blacklisted_companies, jobs_top_card = check_blacklist(rejected_jobs,job_id,company,blacklisted_companies)
-                    except ValueError as e:
+                    except BlacklistedCompany as e:
                         print_lg(e, 'Skipping this job!\n')
                         failed_job(job_id, job_link, resume, date_listed, "Found Blacklisted words in About Company", e, "Skipped", screenshot_name)
                         skip_count += 1
@@ -1624,7 +1842,11 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                     try:
                         # try: time_posted_text = find_by_class(driver, "jobs-unified-top-card__posted-date", 2).text
                         # except: 
-                        time_posted_text = jobs_top_card.find_element(By.XPATH, './/span[contains(normalize-space(), " ago")]').text
+                        if jobs_top_card is None: jobs_top_card = find_job_top_card(job_id)
+                        time_posted_ele = jobs_top_card.find_element(By.XPATH, './/span[contains(normalize-space(), " ago")] | .//p[contains(normalize-space(), " ago")]')
+                        # The new header is one line: "India · 5 minutes ago · 1 applicant".
+                        time_posted_match = re.search(r'(Reposted\s+)?\d+\s+\w+\s+ago', time_posted_ele.text)
+                        time_posted_text = time_posted_match.group(0) if time_posted_match else time_posted_ele.text
                         print("Time Posted: " + time_posted_text)
                         if time_posted_text.__contains__("Reposted"):
                             reposted = True
@@ -1660,7 +1882,11 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                         if not apply_button: continue
                         try:
                             tabs_open = len(driver.window_handles)
-                            apply_button.click()
+                            try:
+                                apply_button.click()
+                            except ElementClickInterceptedException:
+                                # The current button reports its own inner <span> as the interceptor.
+                                driver.execute_script("arguments[0].click();", apply_button)
                             buffer(click_gap)
                             if len(driver.window_handles) > tabs_open:
                                 # A new tab opened -> external apply. Close it and return to LinkedIn.
@@ -1670,7 +1896,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                 driver.switch_to.window(linkedIn_tab)
                                 print_lg(f"A new tab opened ({how}) - external application.")
                                 break
-                            find_by_class(driver, "jobs-easy-apply-modal", 3)
+                            find_easy_apply_modal(5)
                             is_easy_apply = True
                             print_lg(f"Easy Apply detected ({how}).")
                             break
@@ -1686,7 +1912,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                             modal = driver
                             try:
                                 errored = ""
-                                modal = find_by_class(driver, "jobs-easy-apply-modal")
+                                modal = find_easy_apply_modal()
                                 wait_xp_click(modal, next_button_xpath, 1)
                                 resume = "Previous resume"
                                 next_button = True
@@ -1748,9 +1974,15 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                     # try_xp(modal, ".//span[normalize-space(.)='Review']")
                                 if not discard_reason:
                                     follow_company(modal)
-                                    if wait_xp_click(modal, submit_button_xpath, 2, scrollTop=True): 
-                                        date_applied = datetime.now()
-                                        if not wait_span_click(driver, "Done", 2): actions.send_keys(Keys.ESCAPE).perform()
+                                    if wait_xp_click(modal, submit_button_xpath, 2, scrollTop=True):
+                                        if application_was_submitted():
+                                            date_applied = datetime.now()
+                                            if not wait_span_click(driver, "Done", 2): actions.send_keys(Keys.ESCAPE).perform()
+                                        else:
+                                            # The form stayed open: a required field is empty or invalid.
+                                            try: screenshot_name = screenshot(driver, job_id, "Submit was not accepted")
+                                            except Exception: pass
+                                            discard_reason = "LinkedIn did not accept Submit; a required field is probably empty."
                                     elif errored != "stuck" and cur_pause_before_submit and "Yes" in pyautogui.confirm("You submitted the application, didn't you 😒?", "Failed to find Submit Application!", ["Yes", "No"]):
                                         date_applied = datetime.now()
                                         wait_span_click(driver, "Done", 2)
@@ -1810,8 +2042,12 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                     print_lg("Couldn't find pagination element, probably at the end page of results!")
                     break
                 try:
+                    first_card_key = first_job_card_key()
                     pagination_element.find_element(By.XPATH, f".//button[@aria-label='Page {current_page+1}']").click()
                     print_lg(f"\n>-> Now on Page {current_page+1} \n")
+                    # Wait for the old page's cards to be replaced before reading the list again.
+                    try: WebDriverWait(driver, 15).until(lambda _d: first_job_card_key() not in (None, first_card_key))
+                    except TimeoutException: pass
                 except NoSuchElementException:
                     print_lg(f"\n>-> Didn't find Page {current_page+1}. Probably at the end page of results!\n")
                     break

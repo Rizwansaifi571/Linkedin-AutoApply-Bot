@@ -2171,13 +2171,7 @@ def run(total_runs: int) -> int:
     print_lg(f"Currently looking for jobs posted within '{date_posted}' and sorting them by '{sort_by}'")
     apply_to_jobs(search_terms)
     print_lg("########################################################################################################################\n")
-    # Only wait between cycles when there is actually going to be another cycle. This used
-    # to run at the end of every single run, which reads as a 10 minute hang.
-    if run_non_stop and not dailyEasyApplyLimitReached:
-        print_lg("Sleeping for 10 min...")
-        sleep(300)
-        print_lg("Few more min... Gonna start with in next 5 min...")
-        sleep(300)
+    # No pause between cycles: the next cycle starts straight away (user preference).
     buffer(3)
     return total_runs + 1
 

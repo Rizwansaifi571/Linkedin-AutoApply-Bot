@@ -24,6 +24,17 @@ search_terms = ["Software Engineer", "Software Developer", "Python Developer", "
 # Search location, this will be filled in "City, state, or zip code" search box. If left empty as "", tool will not fill it.
 search_location = "United States"               # Some valid examples: "", "United States", "India", "Chicago, Illinois, United States", "90001, Los Angeles, California, United States", "Bengaluru, Karnataka, India", etc.
 
+# Optional: describe the job in plain language. When set, it is used as one search instead of search_terms.
+job_description = ""
+
+# Filters copied from a working LinkedIn Jobs URL (the part after "?"), applied to every search.
+# Eg: "f_TPR=r604800&f_AL=true&f_SAL=f_SA_id_227001:276001$f_SA_id_226001:275001,272015"
+# Anything set here wins over the same filter derived from the options below.
+linkedin_filter_query = ""
+
+# Open LinkedIn's "All filters" dialog instead of putting the filters in the URL? (Slower and less reliable)
+apply_filters_in_browser = False   # True or False, Note: True or False are case-sensitive
+
 # After how many number of applications in current search should the bot switch to next search? 
 switch_number = 30                 # Only numbers greater than 0... Don't put in quotes
 

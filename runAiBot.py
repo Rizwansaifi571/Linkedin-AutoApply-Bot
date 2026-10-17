@@ -1434,6 +1434,30 @@ def questions_are_stalled(previous_blocked: set | None) -> bool:
 
 
 
+_URL_DATE_POSTED = {"Past 24 hours": "r86400", "Past week": "r604800", "Past month": "r2592000"}
+_URL_SORT_BY = {"Most recent": "DD", "Most relevant": "R"}
+_URL_EXPERIENCE = {"Internship": "1", "Entry level": "2", "Associate": "3", "Mid-Senior level": "4", "Director": "5", "Executive": "6"}
+_URL_JOB_TYPE = {"Full-time": "F", "Part-time": "P", "Contract": "C", "Temporary": "T", "Volunteer": "V", "Internship": "I", "Other": "O"}
+_URL_ON_SITE = {"On-site": "1", "Remote": "2", "Hybrid": "3"}
+
+
+def _configured_url_filters() -> dict[str, str]:
+    '''LinkedIn URL parameters for the search options that have a URL form.'''
+    filters = {}
+    def multi(key: str, mapping: dict[str, str], values) -> None:
+        codes = [mapping[value] for value in (values or []) if value in mapping]
+        if codes: filters[key] = ",".join(codes)
+    if date_posted in _URL_DATE_POSTED: filters["f_TPR"] = _URL_DATE_POSTED[date_posted]
+    if sort_by in _URL_SORT_BY: filters["sortBy"] = _URL_SORT_BY[sort_by]
+    multi("f_E", _URL_EXPERIENCE, experience_level)
+    multi("f_JT", _URL_JOB_TYPE, job_type)
+    multi("f_WT", _URL_ON_SITE, on_site)
+    if easy_apply_only: filters["f_AL"] = "true"
+    if under_10_applicants: filters["f_EA"] = "true"
+    if in_your_network: filters["f_JIYN"] = "true"
+    return filters
+
+
 # Function to apply to jobs
 def _search_url(query: str) -> str:
     '''Build a Jobs URL with the configured, stable URL filters for every term.'''
@@ -1448,7 +1472,8 @@ def _search_url(query: str) -> str:
     # LinkedIn keeps the active filters in the URL. This is both quicker and
     # more reliable than opening its frequently changing "All filters" modal.
     # Accept a complete query string pasted from the browser, with or without
-    # a leading question mark.
+    # a leading question mark. Pasted filters override the derived ones.
+    params.update(_configured_url_filters())
     filter_query = str(globals().get("linkedin_filter_query", "")).strip().lstrip("?")
     if filter_query:
         for key, value in parse_qsl(filter_query, keep_blank_values=True):

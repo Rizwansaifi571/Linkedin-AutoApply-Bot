@@ -268,7 +268,7 @@ SCHEMA = [
         "section": "Run settings",
         "fields": [
             _f("Run settings", "settings", "run_non_stop", "Run continuously until stopped", "bool",
-               "After completing every configured job title, start the list again and keep running until you press Stop in the control panel."),
+               "After completing every configured job title, start the list again and keep running until you press Stop in the control panel, or until LinkedIn's daily Easy Apply limit is reached."),
             _f("Run settings", "settings", "run_in_background", "Run in background", "bool",
                "Hide the Chrome window while it works. Note: turning this on disables the 'pause before submit' and 'pause on hard questions' safety pauses."),
             _f("Run settings", "questions", "pause_before_submit", "Pause before submitting", "bool",

@@ -25,6 +25,13 @@ import pyautogui
 from urllib.parse import parse_qsl, urlencode
 from difflib import SequenceMatcher
 
+# The control panel pipes stdout to a file in Windows' default code page, which cannot hold
+# job titles in Korean or a "₹" salary: every such log line raised UnicodeEncodeError and
+# dumped a traceback. Replace what the console cannot show instead.
+for _stream in (sys.stdout, sys.stderr):
+    try: _stream.reconfigure(errors="replace")
+    except Exception: pass
+
 # Raise the CSV field-size cap so very long job descriptions don't trip the writer.
 csv.field_size_limit(1000000)
 
@@ -992,13 +999,17 @@ def fallback_answer(label: str, options: list[str] | None = None) -> str | None:
     '''
     if not globals().get("fallback_yes_and_1", False): return None
     label = clean_label(label)
+    # The question itself says what to pick ("SELECT NO: you understand this is equity-only...").
+    instructed = re.search(r'\b(?:select|choose|answer|mark|click)\s+["\']?(yes|no)\b', label, re.IGNORECASE)
     if options is not None:
         real_options = [o for o in options if o.strip() and o.strip().lower() != "select an option"]
         candidates = ["1", "Yes"] if is_numeric_question(label) else ["Yes", "1"]
+        if instructed: candidates = [instructed.group(1).capitalize()]
         for candidate in candidates:
             matched = match_answer_to_option(candidate, real_options)
             if matched is not None: return real_options[matched]
         return None
+    if instructed: return instructed.group(1).capitalize()
     if is_numeric_question(label): return "1"
     if label.lower().startswith(yes_no_question_starts): return "Yes"
     return None
@@ -1557,7 +1568,8 @@ easy_apply_locators = [
     ("aria-label", ".//button[contains(@class,'jobs-apply-button') and contains(@aria-label, 'Easy Apply')]"),
     ("button label", ".//button[contains(@class,'jobs-apply-button')][.//span[contains(normalize-space(.), 'Easy Apply')]]"),
     # Current /jobs/search-results/ layout: obfuscated classes, only the aria-label is stable.
-    ("search-results aria-label", "//button[contains(@aria-label, 'Easy Apply')]"),
+    # LinkedIn switches this control between <button> and <a> (seen as <a> since 2026-10-18).
+    ("search-results aria-label", "//*[self::button or self::a][contains(@aria-label, 'Easy Apply')]"),
     ("apply button", apply_button_xpath),
 ]
 
@@ -1851,6 +1863,20 @@ def visible_job_results() -> list[WebElement]:
     return cards
 
 
+def easy_apply_limit_shown(time: float = 3.0) -> bool:
+    '''True when clicking Easy Apply opened LinkedIn's "You reached today's Easy Apply limit".'''
+    try:
+        WebDriverWait(driver, time).until(lambda d: d.execute_script(
+            "return [...document.querySelectorAll('dialog[open], [role=dialog]')]"
+            ".some(x => /Easy Apply limit/i.test(x.innerText || ''));") or
+            pick_first_displayed(d.find_elements(By.XPATH, easy_apply_modal_xpath)))
+        return bool(driver.execute_script(
+            "return [...document.querySelectorAll('dialog[open], [role=dialog]')]"
+            ".some(x => /Easy Apply limit/i.test(x.innerText || ''));"))
+    except (TimeoutException, WebDriverException):
+        return False
+
+
 def browser_is_alive() -> bool:
     '''False only when the window was closed or the WebDriver session is gone.'''
     try:
@@ -1891,7 +1917,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
     applied_jobs = get_applied_job_ids()
     rejected_jobs = set()
     blacklisted_companies = set()
-    global current_city, failed_count, skip_count, easy_applied_count, external_jobs_count, tabs_count, pause_before_submit, pause_at_failed_question, useNewResume
+    global current_city, failed_count, skip_count, easy_applied_count, external_jobs_count, tabs_count, pause_before_submit, pause_at_failed_question, useNewResume, dailyEasyApplyLimitReached
     current_city = current_city.strip()
 
     job_description = str(globals().get("job_description", "")).strip()
@@ -2060,6 +2086,13 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                 driver.switch_to.window(linkedIn_tab)
                                 print_lg(f"A new tab opened ({how}) - external application.")
                                 break
+                            if easy_apply_limit_shown():
+                                # Every further Easy Apply today opens this same dialog.
+                                dailyEasyApplyLimitReached = True
+                                try: actions.send_keys(Keys.ESCAPE).perform()
+                                except Exception: pass
+                                print_lg("\n###############  LinkedIn says: You reached today's Easy Apply limit.  ###############\n")
+                                return
                             find_easy_apply_modal(5)
                             is_easy_apply = True
                             print_lg(f"Easy Apply detected ({how}).")
@@ -2298,6 +2331,10 @@ def main() -> None:
         driver.switch_to.window(linkedIn_tab)
         total_runs = run(total_runs)
         while(run_non_stop):
+            if dailyEasyApplyLimitReached:
+                # Nothing more can be applied to today: end the run instead of searching on.
+                print_lg("Daily Easy Apply limit reached. Stopping the bot.")
+                break
             if cycle_date_posted:
                 date_options = ["Any time", "Past month", "Past week", "Past 24 hours"]
                 global date_posted
@@ -2308,9 +2345,7 @@ def main() -> None:
                 total_runs = run(total_runs)
                 sort_by = "Most recent" if sort_by == "Most relevant" else "Most relevant"
             total_runs = run(total_runs)
-            if dailyEasyApplyLimitReached:
-                break
-        
+
 
     except (NoSuchWindowException, WebDriverException) as e:
         logger.error("The browser window was closed or the session became invalid. Exiting.", exc_info=e)

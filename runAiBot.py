@@ -22,6 +22,7 @@ import csv
 import re
 import time
 import pyautogui
+from urllib.parse import parse_qsl, urlencode
 from difflib import SequenceMatcher
 
 # Raise the CSV field-size cap so very long job descriptions don't trip the writer.
@@ -35,7 +36,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, NoSuchWindowException, ElementNotInteractableException, StaleElementReferenceException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, NoSuchWindowException, ElementNotInteractableException, StaleElementReferenceException, TimeoutException, WebDriverException
 
 from config.personals import *
 from config.questions import *
@@ -354,7 +355,15 @@ def set_search_location() -> None:
     if search_location.strip():
         try:
             print_lg(f'Setting search location as: "{search_location.strip()}"')
-            search_location_ele = try_xp(driver, ".//input[@aria-label='City, state, or zip code'and not(@disabled)]", False) #  and not(@aria-hidden='true')]")
+            # LinkedIn changed this field a few times ("City, state, or zip code",
+            # then "Search location"). Prefer any visible enabled location input.
+            location_inputs = driver.find_elements(By.XPATH, (
+                "//input[not(@disabled) and not(@aria-hidden='true') and ("
+                "contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'location') or "
+                "contains(translate(@placeholder, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'location') or "
+                "contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'city, state')"
+                ")]"))
+            search_location_ele = next((item for item in location_inputs if item.is_displayed()), False)
             text_input(actions, search_location_ele, search_location, "Search Location")
         except ElementNotInteractableException:
             try_xp(driver, ".//label[@class='jobs-search-box__input-icon jobs-search-box__keywords-label']")
@@ -383,8 +392,13 @@ def apply_filters() -> None:
     try:
         recommended_wait = recommended_filter_wait(click_gap)
 
-        # element_to_be_clickable, not presence: the filters button renders before it's usable.
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//button[normalize-space()="All filters"]'))).click()
+        # LinkedIn now renders the button with an aria label in some layouts and
+        # as text in others.  Either is valid; only a visible, clickable button
+        # should be used because hidden responsive copies are also in the DOM.
+        all_filters_xpath = ("//button[not(@disabled) and (normalize-space(.)='All filters' or "
+                            "contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'all filters'))]")
+        all_filters = wait.until(lambda d: pick_first_displayed(d.find_elements(By.XPATH, all_filters_xpath)))
+        all_filters.click()
         buffer(recommended_wait)
 
         wait_span_click(driver, sort_by)
@@ -420,7 +434,9 @@ def apply_filters() -> None:
         multi_sel_noWait(driver, commitments)
         if benefits or commitments: buffer(recommended_wait)
 
-        show_results_button: WebElement = wait.until(EC.element_to_be_clickable((By.XPATH, '//button[contains(translate(@aria-label, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "apply current filters to show")]')))
+        show_results_xpath = ("//button[contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "
+                              "'apply current filters to show') or normalize-space(.)='Show results']")
+        show_results_button: WebElement = wait.until(lambda d: pick_first_displayed(d.find_elements(By.XPATH, show_results_xpath)))
         show_results_button.click()
         buffer(3)   # let the results reload settle before anything reads the list
 
@@ -466,20 +482,43 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
     * skip: A boolean flag to skip this job
     '''
     skip = False
-    # Every class on a job card that carried data is now a rotating random string, so anchor
-    # on the artdeco lockup structure instead. The title link is no longer the card's first
-    # <a> in every layout either, so address it through the lockup title too.
-    job_details_button = job.find_element(By.XPATH, ".//div[contains(@class,'artdeco-entity-lockup__title')]//a")
-    scroll_to_view(driver, job_details_button, True)
-    job_id = job.get_dom_attribute('data-occludable-job-id')
+    # LinkedIn has moved between <li> cards and direct job links in the result
+    # pane.  Normalise both representations into a card plus its title link.
+    card = job
+    job_href = job.get_attribute('href') or ''
+    if job.tag_name.lower() == 'a' and ('/jobs/view/' in job_href or 'currentJobId=' in job_href):
+        job_details_button = job
+        try:
+            card = job.find_element(By.XPATH, './ancestor::li[1]')
+        except NoSuchElementException:
+            try:
+                card = job.find_element(By.XPATH, "./ancestor::div[.//a[contains(@href, '/jobs/view/')]][1]")
+            except NoSuchElementException:
+                card = job
+    else:
+        try:
+            job_details_button = card.find_element(By.XPATH, ".//div[contains(@class,'artdeco-entity-lockup__title')]//a")
+        except NoSuchElementException:
+            job_details_button = card.find_element(By.XPATH, ".//a[contains(@href, '/jobs/view/') or contains(@href, 'currentJobId=')]")
+    # Do not align a result to the very top: LinkedIn's fixed navigation bar
+    # then sits over the title and intercepts the click.
+    scroll_to_view(driver, job_details_button)
+    job_id = card.get_dom_attribute('data-occludable-job-id')
+    if not job_id:
+        job_href = job_details_button.get_attribute('href') or ''
+        job_id_match = re.search(r'/jobs/view/(\d+)|[?&]currentJobId=(\d+)', job_href)
+        job_id = next((part for part in job_id_match.groups() if part), '') if job_id_match else ''
     # aria-label is the whole title; .text of the link also drags in the verified-badge node,
     # and slicing at the first "\n" silently ate the last character when there wasn't one.
     title = job_details_button.get_dom_attribute('aria-label') or job_details_button.text
     title = title.split("\n")[0].removesuffix(" with verification").strip()
     # The subtitle used to read "Company · Location (Style)". It is now the company alone,
     # and the location moved into its own metadata list.
-    company = job.find_element(By.XPATH, ".//div[contains(@class,'artdeco-entity-lockup__subtitle')]").text.strip()
-    location_ele = try_xp(job, ".//ul[contains(@class,'job-card-container__metadata-wrapper')]//span[@dir='ltr']", False)
+    try:
+        company = card.find_element(By.XPATH, ".//div[contains(@class,'artdeco-entity-lockup__subtitle')]").text.strip()
+    except NoSuchElementException:
+        company = "Unknown"
+    location_ele = try_xp(card, ".//ul[contains(@class,'job-card-container__metadata-wrapper')]//span[@dir='ltr']", False)
     work_location = location_ele.text.strip() if location_ele else "Unknown"
     work_style = "Unknown"
     if '(' in work_location and ')' in work_location:
@@ -494,17 +533,20 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
         print_lg(f'Skipping previously rejected "{title} | {company}" job. Job ID: {job_id}!')
         skip = True
     try:
-        if job.find_element(By.CLASS_NAME, "job-card-container__footer-job-state").text == "Applied":
+        if card.find_element(By.CLASS_NAME, "job-card-container__footer-job-state").text == "Applied":
             skip = True
             print_lg(f'Already applied to "{title} | {company}" job. Job ID: {job_id}!')
     except: pass
-    try: 
+    try:
         if not skip: job_details_button.click()
+    except ElementClickInterceptedException:
+        # The clickable title wraps an <h2> in the current result cards; Chrome
+        # can report the child heading as an interceptor despite it being part
+        # of the same link. Dispatch the link click directly in that case.
+        driver.execute_script("arguments[0].click();", job_details_button)
     except Exception as e:
         logger.warning('Failed to click "%s | %s" job on details button. Job ID: %s!', title, company, job_id)
-        # print_lg(e)
-        discard_job()
-        job_details_button.click() # To pass the error outside
+        raise
     buffer(click_gap)
     return (job_id,title,company,work_location,work_style,skip)
 
@@ -695,7 +737,26 @@ def get_job_description(
     skipMessage = None
     try:
         found_masters = 0
-        jobDescription = find_by_class(driver, "jobs-box__html-content").text
+        # LinkedIn has replaced jobs-box__html-content in the current detail
+        # pane. Prefer semantic containers so this works across both layouts.
+        description_candidates = (
+            "//div[@id='job-details']",
+            "//div[contains(@class, 'jobs-description__content')]",
+            "//div[contains(@class, 'jobs-box__html-content')]",
+            "//section[.//*[self::h2 or self::h3][contains(translate(normalize-space(.), "
+            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'about the job')]]",
+        )
+        description_element = None
+        for xpath in description_candidates:
+            elements = driver.find_elements(By.XPATH, xpath)
+            description_element = next((element for element in elements if element.is_displayed()), None)
+            if description_element:
+                break
+        if not description_element:
+            raise NoSuchElementException("LinkedIn job description panel was not found")
+        jobDescription = description_element.text.strip()
+        if not jobDescription:
+            raise NoSuchElementException("LinkedIn job description panel was empty")
         jobDescriptionLow = jobDescription.lower()
         bad_word = find_bad_word(jobDescription, bad_words)
         if bad_word:
@@ -1374,6 +1435,58 @@ def questions_are_stalled(previous_blocked: set | None) -> bool:
 
 
 # Function to apply to jobs
+def _search_url(query: str) -> str:
+    '''Build a Jobs URL with the configured, stable URL filters for every term.'''
+    params = {"keywords": query}
+    # A country search is much more reliable when LinkedIn gets its geo id too.
+    # Keep arbitrary configured locations working through the readable location
+    # parameter; LinkedIn resolves it after the results page loads.
+    if search_location.strip():
+        params["location"] = search_location.strip()
+        if search_location.strip().casefold() == "india":
+            params["geoId"] = "102713980"
+    # LinkedIn keeps the active filters in the URL. This is both quicker and
+    # more reliable than opening its frequently changing "All filters" modal.
+    # Accept a complete query string pasted from the browser, with or without
+    # a leading question mark.
+    filter_query = str(globals().get("linkedin_filter_query", "")).strip().lstrip("?")
+    if filter_query:
+        for key, value in parse_qsl(filter_query, keep_blank_values=True):
+            if key not in {"keywords", "location", "geoId", "currentJobId", "origin", "referralSearchId"}:
+                params[key] = value
+    # This is the current Jobs route. The previous /jobs/search/ route can
+    # redirect slowly enough that the old five-second card wait expires.
+    return "https://www.linkedin.com/jobs/search-results/?" + urlencode(params)
+
+
+def visible_job_results() -> list[WebElement]:
+    '''Return only job-title controls in the left results pane.
+
+    The current page also has job-view links in the right detail pane for
+    work-style and salary tags.  Selecting every /jobs/view/ link made the bot
+    click "Remote" and "Full-time" as if they were separate jobs.
+    '''
+    legacy_cards = [card for card in driver.find_elements(
+        By.XPATH, "//li[@data-occludable-job-id]") if card.is_displayed()]
+    if legacy_cards:
+        return legacy_cards
+
+    excluded_labels = {"remote", "hybrid", "on-site", "onsite", "full-time", "part-time", "easy apply", "apply", "save"}
+    results = []
+    for link in driver.find_elements(By.XPATH, "//a[contains(@href, '/jobs/view/') or contains(@href, 'currentJobId=')]"):
+        try:
+            label = (link.get_attribute('aria-label') or link.text or '').strip().casefold()
+            bounds = driver.execute_script(
+                "const r=arguments[0].getBoundingClientRect(); return [r.left,r.top,r.width,r.height,window.innerWidth];",
+                link)
+            in_left_results_pane = bounds[0] >= 0 and bounds[0] < bounds[4] * 0.45 and bounds[1] > 120
+            if link.is_displayed() and label and label not in excluded_labels and in_left_results_pane:
+                results.append(link)
+        except (StaleElementReferenceException, WebDriverException):
+            continue
+    return results
+
+
 def apply_to_jobs(search_terms: list[str]) -> None:
     applied_jobs = get_applied_job_ids()
     rejected_jobs = set()
@@ -1381,19 +1494,26 @@ def apply_to_jobs(search_terms: list[str]) -> None:
     global current_city, failed_count, skip_count, easy_applied_count, external_jobs_count, tabs_count, pause_before_submit, pause_at_failed_question, useNewResume
     current_city = current_city.strip()
 
-    if randomize_search_order:  shuffle(search_terms)
-    for searchTerm in search_terms:
-        driver.get(f"https://www.linkedin.com/jobs/search/?keywords={searchTerm}")
+    job_description = str(globals().get("job_description", "")).strip()
+    searches = [job_description] if job_description else list(search_terms)
+    if randomize_search_order and not job_description: shuffle(searches)
+    for searchTerm in searches:
+        driver.get(_search_url(searchTerm))
         print_lg("\n________________________________________________________________________________________________________________________\n")
         print_lg(f'\n>>>> Now searching for "{searchTerm}" <<<<\n\n')
 
-        apply_filters()
+        if globals().get("apply_filters_in_browser", False):
+            apply_filters()
+        else:
+            print_lg("Using configured LinkedIn URL filters; not opening the filter dialog.")
 
         current_count = 0
         try:
             while current_count < switch_number:
-                # Wait until job listings are loaded
-                wait.until(EC.presence_of_all_elements_located((By.XPATH, "//li[@data-occludable-job-id]")))
+                # Current LinkedIn sometimes omits data-occludable-job-id, but
+                # every result still has a link to /jobs/view/<id>. Wait long
+                # enough for the current search-results route to hydrate.
+                WebDriverWait(driver, 30).until(lambda _driver: visible_job_results())
 
                 pagination_element, current_page = get_page_info()
 
@@ -1404,7 +1524,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                     # LinkedIn virtualises this list: off-screen <li>s aren't in the DOM yet and
                     # rendered ones go stale as we scroll, so a single snapshot only ever gets
                     # one screenful. Re-query each time instead of holding that snapshot.
-                    job_listings = driver.find_elements(By.XPATH, "//li[@data-occludable-job-id]")
+                    job_listings = visible_job_results()
                     if job_index >= len(job_listings): break
                     job = job_listings[job_index]
                     job_index += 1
@@ -1671,6 +1791,18 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                     print_lg(f"\n>-> Didn't find Page {current_page+1}. Probably at the end page of results!\n")
                     break
 
+        except TimeoutException:
+            # A slow response, sign-in screen, or LinkedIn challenge used to be
+            # reported as a closed browser because TimeoutException subclasses
+            # WebDriverException. Keep the session alive and move to the next
+            # configured role instead of closing Chrome immediately.
+            try:
+                failed_url = driver.current_url
+            except WebDriverException:
+                failed_url = "<browser session unavailable>"
+            logger.error("No job cards loaded within 30 seconds. URL: %s", failed_url)
+            print_lg("No job cards loaded for this role after 30 seconds. Keeping the browser open and trying the next role.")
+            continue
         except (NoSuchWindowException, WebDriverException) as e:
             logger.error("The browser window was closed or the session became invalid. Stopping.", exc_info=e)
             raise e  # let the outer handler deal with it

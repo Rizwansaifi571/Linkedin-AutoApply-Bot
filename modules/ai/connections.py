@@ -53,6 +53,23 @@ _answer_cache: dict[tuple, str] = {}
 _ai_unavailable = False
 
 
+def _is_transient_ai_error(error: Exception) -> bool:
+    '''Return True for provider/network failures where retrying this run is not useful.'''
+    text = str(error).upper()
+    return any(marker in text for marker in (
+        "429", "500", "502", "503", "504", "UNAVAILABLE",
+        "RESOURCE_EXHAUSTED", "QUOTA", "TIMEOUT", "CONNECTERROR",
+        "CONNECTION", "NAME OR SERVICE NOT KNOWN",
+    ))
+
+
+def _disable_ai_for_run(error: Exception) -> None:
+    '''Stop subsequent AI calls after a provider outage so the bot can keep applying.'''
+    global _ai_unavailable
+    _ai_unavailable = True
+    logger.warning("AI unavailable for the rest of this run. Using local answers and fallbacks. %s", error)
+
+
 def _ai_error_alert(message: str, error: Exception, title: str = "AI Error") -> None:
     '''Log an AI error and (optionally) show a dismissible dialog, mirroring the rest of the tool.'''
     global _alerts_enabled
@@ -131,9 +148,9 @@ def create_ai_client() -> Optional[AIClient]:
         if provider == "google_genai":
             if api_key and api_key.lower() != "not-needed":
                 os.environ.setdefault("GOOGLE_API_KEY", api_key)
-            # Gemini's default retry policy can wait nearly a minute after a 429. One
-            # failed request is enough to disable AI for this run and use local fallbacks.
-            kwargs["max_retries"] = 1
+            # Do not let a provider outage block a job for several retry backoffs. A
+            # failed request disables AI for this run and local fallbacks take over.
+            kwargs["max_retries"] = 0
             model = init_chat_model(model_name, model_provider="google_genai", **kwargs)
         else:
             base_url = (getattr(cfg, "llm_api_url", "") or "").strip()
@@ -178,7 +195,7 @@ def extract_skills(client: Optional[AIClient], job_description: str, stream: boo
     Extract and classify skills from a job description.
     Returns a dict with the five skill buckets, or an ``{"error": ...}`` dict on failure.
     '''
-    if not client or not job_description:
+    if not client or not job_description or _ai_unavailable:
         return {"error": "AI client unavailable or empty job description."}
     prompt = extract_skills_prompt.format(job_description)
     try:
@@ -186,11 +203,17 @@ def extract_skills(client: Optional[AIClient], job_description: str, stream: boo
         result = structured.invoke(prompt)
         return result.model_dump()
     except Exception as e:
+        if _is_transient_ai_error(e):
+            _disable_ai_for_run(e)
+            return {"error": str(e)}
         # Some local or older models don't support structured output — fall back to plain JSON parsing.
         logger.warning("Structured skill extraction unavailable, falling back to plain parsing. %s", e)
         try:
             return convert_to_json(_msg_text(client.model.invoke(prompt)))
         except Exception as e2:
+            if _is_transient_ai_error(e2):
+                _disable_ai_for_run(e2)
+                return {"error": str(e2)}
             _ai_error_alert("Could not extract skills from the job description.", e2)
             return {"error": str(e2)}
 
@@ -308,10 +331,8 @@ def answer_question(
         print_lg(f'AI answered "{question}" -> "{answer}"')
         return answer
     except Exception as e:
-        error_text = str(e).upper()
-        if any(marker in error_text for marker in ("429", "RESOURCE_EXHAUSTED", "QUOTA", "CONNECTERROR", "NAME OR SERVICE NOT KNOWN")):
-            _ai_unavailable = True
-            logger.warning("AI unavailable for the rest of this run (%s). Using local answers and fallbacks.", e)
+        if _is_transient_ai_error(e):
+            _disable_ai_for_run(e)
         else:
             _ai_error_alert("Could not generate an AI answer for a question.", e)
         return ""

@@ -1851,6 +1851,21 @@ def visible_job_results() -> list[WebElement]:
     return cards
 
 
+def search_has_no_results() -> bool:
+    '''
+    True when the results page has nothing for THIS search. With no exact match LinkedIn
+    still fills the list ("We had trouble finding exact matches, but here are results that
+    share similar criteria") - e.g. Mechanical Engineer jobs for a software role - and
+    those must never be applied to.
+    '''
+    try:
+        return bool(driver.execute_script(
+            "return /No matching jobs found|\\b0 results\\b|No results found|trouble finding exact matches/i"
+            ".test(document.body.innerText);"))
+    except WebDriverException:
+        return False
+
+
 def first_job_card_key() -> str | None:
     '''Job id (or legacy card id) of the first result; changes when a new page loads.'''
     try:
@@ -1888,7 +1903,12 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                 # Current LinkedIn sometimes omits data-occludable-job-id, but
                 # every result still has a link to /jobs/view/<id>. Wait long
                 # enough for the current search-results route to hydrate.
-                WebDriverWait(driver, 30).until(lambda _driver: visible_job_results())
+                # Stop waiting as soon as LinkedIn says the search is empty, instead of
+                # spending 30 seconds per role that has no new jobs today.
+                WebDriverWait(driver, 30).until(lambda _driver: visible_job_results() or search_has_no_results())
+                if search_has_no_results() or not visible_job_results():
+                    print_lg(f'No jobs for "{searchTerm}" with the current filters (LinkedIn only offers unrelated "similar" jobs). Moving to the next role.')
+                    break
 
                 pagination_element, current_page = get_page_info()
 

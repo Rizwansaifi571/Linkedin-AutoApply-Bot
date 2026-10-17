@@ -36,7 +36,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, NoSuchWindowException, ElementNotInteractableException, StaleElementReferenceException, TimeoutException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, NoSuchWindowException, ElementNotInteractableException, StaleElementReferenceException, TimeoutException, WebDriverException, InvalidSessionIdException
 
 from config.personals import *
 from config.questions import *
@@ -1851,6 +1851,17 @@ def visible_job_results() -> list[WebElement]:
     return cards
 
 
+def browser_is_alive() -> bool:
+    '''False only when the window was closed or the WebDriver session is gone.'''
+    try:
+        driver.current_url
+        return True
+    except (NoSuchWindowException, InvalidSessionIdException):
+        return False
+    except WebDriverException as e:
+        return not any(marker in str(e).lower() for marker in ("invalid session", "disconnected", "no such window", "not connected"))
+
+
 def search_has_no_results() -> bool:
     '''
     True when the results page has nothing for THIS search. With no exact match LinkedIn
@@ -2196,7 +2207,13 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                     break
                 try:
                     first_card_key = first_job_card_key()
-                    pagination_element.find_element(By.XPATH, f".//button[@aria-label='Page {current_page+1}']").click()
+                    next_page_button = pagination_element.find_element(By.XPATH, f".//button[@aria-label='Page {current_page+1}']")
+                    scroll_to_view(driver, next_page_button)
+                    try:
+                        next_page_button.click()
+                    except ElementClickInterceptedException:
+                        # The "Get job alerts" / messaging bar at the bottom covers the button.
+                        driver.execute_script("arguments[0].click();", next_page_button)
                     print_lg(f"\n>-> Now on Page {current_page+1} \n")
                     # Wait for the old page's cards to be replaced before reading the list again.
                     try: WebDriverWait(driver, 15).until(lambda _d: first_job_card_key() not in (None, first_card_key))
@@ -2218,6 +2235,15 @@ def apply_to_jobs(search_terms: list[str]) -> None:
             print_lg("No job cards loaded for this role after 30 seconds. Keeping the browser open and trying the next role.")
             continue
         except (NoSuchWindowException, WebDriverException) as e:
+            if browser_is_alive():
+                # A page-level hiccup (a blocked click, a stale card...) used to be treated as
+                # a closed browser and ended the whole run. Only this role is abandoned.
+                logger.warning('Problem while working on "%s": %s', searchTerm, str(e).splitlines()[0] if str(e) else type(e).__name__)
+                print_lg(f'Something went wrong on the "{searchTerm}" results. Moving to the next role.')
+                try:
+                    if easy_apply_modal_is_open(): discard_job()
+                except Exception: pass
+                continue
             logger.error("The browser window was closed or the session became invalid. Stopping.", exc_info=e)
             raise e  # let the outer handler deal with it
         except Exception as e:

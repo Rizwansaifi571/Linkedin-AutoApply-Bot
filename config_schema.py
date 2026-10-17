@@ -275,6 +275,8 @@ SCHEMA = [
                "Pause on the final screen of each application so you can review it before it's sent. Recommended on. Ignored when 'Run in background' is on."),
             _f("Run settings", "questions", "pause_at_failed_question", "Pause on hard questions", "bool",
                "Pause and wait for you when the tool can't confidently answer a question. If off, it answers randomly. Ignored when 'Run in background' is on."),
+            _f("Run settings", "questions", "fallback_yes_and_1", "Answer unknown questions with Yes / 1", "bool",
+               "When neither your question_answers.csv nor AI has an answer: number questions get 1 and yes/no questions get Yes. Off = skip that job instead."),
             # --- advanced run options ---
             _f("Run settings", "settings", "auto_manage_driver", "Manage Chrome driver automatically", "bool",
                "Let the tool download and match the right Chrome driver for you. Recommended on so you don't have to install it yourself.", advanced=True),

@@ -692,3 +692,44 @@ def test_an_unrecognised_dropdown_question_is_left_unanswered(bot, monkeypatch):
     assert select.selected == "Select an option"
     assert bot.unanswered_questions
     assert {answer for _, answer, kind, _ in questions_list if kind == "select"} == {"Select an option"}
+
+
+# ------------------------ fallback_yes_and_1 (last-resort answers) -------------------
+@pytest.mark.parametrize("question, expected", [
+    ("How many years of experience do you have with Kubernetes?", "1"),
+    ("How soon can you join? (in days)?", "1"),
+    ("Are you comfortable working from the office?", "Yes"),
+    ("Do you have 2+ years of Python experience?", "Yes"),     # yes/no, not a number
+    ("What is your expected bonus?", ""),                       # neither: still left empty
+])
+def test_text_fallback_answers_numbers_with_1_and_yes_no_with_yes(bot, monkeypatch, question, expected):
+    monkeypatch.setattr(bot, "fallback_yes_and_1", True)
+    modal, field = text_question(bot, monkeypatch, question)
+
+    bot.answer_questions(modal, set(), "Remote")
+
+    assert field.value == expected
+
+
+def test_csv_answer_beats_the_fallback(bot, monkeypatch):
+    monkeypatch.setattr(bot, "fallback_yes_and_1", True)
+    question = "How many years of experience do you have with Kubernetes?"
+    modal, field = text_question(bot, monkeypatch, question)
+    monkeypatch.setattr(bot, "question_answer_bank", {bot.normalise_question_text(question): "3"})
+
+    bot.answer_questions(modal, set(), "Remote")
+
+    assert field.value == "3"
+
+
+def test_dropdown_fallback_picks_yes_but_never_forces_it_onto_other_options(bot, monkeypatch):
+    monkeypatch.setattr(bot, "fallback_yes_and_1", True)
+    monkeypatch.setattr(bot, "question_answer_bank", {})
+    monkeypatch.setattr(bot, "use_AI", False)
+    modal, select = dropdown(bot, monkeypatch, "Are you open to relocating to Pune?",
+                             ["Select an option", "Yes", "No"])
+    bot.answer_questions(modal, set(), "Remote")
+    assert select.picked == "Yes"
+
+    assert bot.fallback_answer("Which shift do you prefer?", ["Select an option", "Day", "Night"]) is None
+    assert bot.fallback_answer("How many years of SQL experience?", ["0", "1", "2-4", "5+"]) == "1"

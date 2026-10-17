@@ -70,6 +70,13 @@ def _disable_ai_for_run(error: Exception) -> None:
     logger.warning("AI unavailable for the rest of this run. Using local answers and fallbacks. %s", error)
 
 
+def reset_ai_availability() -> None:
+    '''Give the AI another chance (called per search role): a 429 quota or outage is often
+    over minutes later, and a non-stop run would otherwise never use AI again.'''
+    global _ai_unavailable
+    _ai_unavailable = False
+
+
 def _ai_error_alert(message: str, error: Exception, title: str = "AI Error") -> None:
     '''Log an AI error and (optionally) show a dismissible dialog, mirroring the rest of the tool.'''
     global _alerts_enabled

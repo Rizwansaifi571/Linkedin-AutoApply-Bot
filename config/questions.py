@@ -23,8 +23,15 @@ version:    26.01.20.5.08
 # Optional local answer history. Rows use: question_text,answer,field_type,created_at.
 # The latest row for a normalized question wins, so this can be appended to safely.
 question_answers_file = "all excels/question_answers.csv"
-# Questions that reached AI or could not be answered are appended here for review.
+# Every question NOT found in question_answers_file is appended here (with the answer used) for review.
 question_review_file = "all excels/questions_to_review.csv"
+
+# Last resort when neither question_answers_file, your config nor AI has an answer:
+# True  = number questions get "1" and yes/no questions (radio, dropdown, short text) get "Yes".
+# False = leave the question empty, which makes the bot skip that job.
+# Hard facts (citizenship, work authorization, visa, gender, disability, veteran) always use
+# your configured answers above, never this fallback.
+fallback_yes_and_1 = True          # True or False, Note: True or False are case-sensitive
 
 # Give an relative path of your default resume to be uploaded. If file in not found, will continue using your previously uploaded resume in LinkedIn.
 default_resume_path = "all resumes/default/resume.pdf"      # (In Development)

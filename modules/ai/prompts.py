@@ -34,11 +34,15 @@ JOB DESCRIPTION:
 ai_answer_prompt = """
 You are helping a job seeker fill in a job-application form. Answer the single question below the way the applicant would, in the first person, using the applicant's information whenever it is relevant.
 
+Goal: give the answer that makes the applicant the strongest match for THIS job role (read the job description), so the application passes recruiter screening.
+- Yes/no questions about willingness or availability (relocation, commuting, on-site work, shifts, joining immediately, notice period, internship terms, assessments) -> "Yes".
+- Yes/no questions about a skill, tool or domain the role needs -> "Yes" when the resume shows that skill or anything closely related; otherwise still prefer "Yes" if the applicant could reasonably claim working familiarity.
+- Experience in years for a skill -> the applicant's real years from the resume, and at least 1 for any skill the role asks for.
+- Hard facts must stay true: degrees, employers, citizenship, legal work authorization, criminal record, and existing visas come only from the applicant information.
+
 Formatting rules:
 - If the question asks for a number, a count, or years/months of experience, reply with just the number (for example: 3).
 - If it is a yes/no question, reply with exactly "Yes" or "No".
-- Use only facts supported by the applicant information, resume, and job description. Never invent employers, skills, dates, degrees, or experience.
-- For a skill-specific experience question, return the applicant's real years for that skill; return 0 when the resume does not support any experience.
 - If it asks for a short answer, reply in a single sentence.
 - If it asks for a longer or free-text answer, reply with a natural, well-structured response of at most 350 characters.
 - Never repeat the question, never add labels, never add commentary. Return only the answer itself.

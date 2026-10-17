@@ -40,6 +40,20 @@ def log_records():
     logger.setLevel(previous_level)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_question_answering(monkeypatch):
+    '''
+    Tests describe the strict mode (`fallback_yes_and_1 = False`: unknown questions stay
+    unanswered) unless they opt in, and never write to the user's real
+    questions_to_review.csv. The module-scoped `bot` fixtures import runAiBot first.
+    '''
+    import sys
+    bot = sys.modules.get("runAiBot")
+    if bot is not None:
+        monkeypatch.setattr(bot, "fallback_yes_and_1", False, raising=False)
+        monkeypatch.setattr(bot, "question_review_file", "", raising=False)
+
+
 @pytest.fixture
 def client():
     '''Flask test client for the local control panel (app.py).'''

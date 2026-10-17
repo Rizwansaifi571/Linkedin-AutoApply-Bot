@@ -50,7 +50,7 @@ from modules.clickers_and_finders import *
 from modules.validator import validate_config
 
 if use_AI:
-    from modules.ai.connections import create_ai_client, extract_skills, answer_question, close_ai_client
+    from modules.ai.connections import create_ai_client, extract_skills, answer_question, close_ai_client, reset_ai_availability
 
 from typing import Literal
 
@@ -158,9 +158,10 @@ question_answer_bank = load_question_answer_bank(globals().get('question_answers
 
 
 def record_question_for_review(question: str, answer: str | None, field_type: str) -> None:
-    '''Append an unknown/AI question once so it can be reviewed into the answer bank.'''
+    '''Append a question that is not in the answer bank, once per question and field type,
+    with the answer that was used, so it can be reviewed into the answer bank.'''
     question = str(question or '').strip()
-    if not question:
+    if not question or question.lower() == 'unknown':
         return
     review_path = globals().get('question_review_file', '')
     if not review_path:
@@ -179,9 +180,9 @@ def record_question_for_review(question: str, answer: str | None, field_type: st
             with open(review_path, newline='', encoding='utf-8-sig') as review_file:
                 for old_row in csv.DictReader(review_file):
                     existing.add((normalise_question_text(old_row.get('question_text', '')),
-                                  str(old_row.get('answer', '') or '').strip(),
                                   old_row.get('field_type', '')))
-        key = (normalise_question_text(question), row['answer'], field_type)
+        # One row per question: the same question is asked by many jobs.
+        key = (normalise_question_text(question), field_type)
         if key in existing:
             return
         os.makedirs(os.path.dirname(review_path), exist_ok=True)
@@ -915,6 +916,52 @@ def upload_resume(modal: WebElement, resume: str) -> tuple[bool, str]:
         return True, os.path.basename(default_resume_path)
     except: return False, "Previous resume"
 
+numeric_question_terms = ['how many', 'how much', 'how soon', 'how long', 'years', 'year', 'months', 'month',
+                          'days', 'number', 'experience', 'rate', 'score', 'percentage', 'cgpa', 'gpa']
+yes_no_question_starts = ('do ', 'does ', 'did ', 'are ', 'is ', 'have ', 'has ', 'can ', 'could ',
+                          'will ', 'would ', 'should ', 'were ', 'was ', 'may ', 'okay ', 'ok ')
+
+
+def is_number(text) -> bool:
+    return bool(re.fullmatch(r'\s*\d+(?:[.,]\d+)*\s*', str(text or '')))
+
+
+def field_shows_error(question: WebElement) -> bool:
+    '''True when LinkedIn shows a validation error under this question.'''
+    try: text = (question.text or '').lower()
+    except Exception: return False
+    return any(marker in text for marker in ('invalid input', 'enter a whole number', 'enter a decimal number',
+                                              'enter a valid', 'must be a number', 'larger than', 'smaller than'))
+
+
+def is_numeric_question(label: str) -> bool:
+    label = label.lower().strip()
+    if label.startswith(yes_no_question_starts) and not label.startswith(('how',)):
+        # "Do you have 2+ years of Python?" is a yes/no question, not a number.
+        return False
+    return find_bad_word(label, numeric_question_terms) is not None
+
+
+def fallback_answer(label: str, options: list[str] | None = None) -> str | None:
+    '''
+    The answer of last resort (`fallback_yes_and_1`): "1" for a number question, "Yes" for
+    a yes/no question. With `options` (radio / dropdown) it returns the matching option text,
+    or None when no option fits - a "Yes" is never forced onto e.g. a gender dropdown.
+    '''
+    if not globals().get("fallback_yes_and_1", False): return None
+    label = clean_label(label)
+    if options is not None:
+        real_options = [o for o in options if o.strip() and o.strip().lower() != "select an option"]
+        candidates = ["1", "Yes"] if is_numeric_question(label) else ["Yes", "1"]
+        for candidate in candidates:
+            matched = match_answer_to_option(candidate, real_options)
+            if matched is not None: return real_options[matched]
+        return None
+    if is_numeric_question(label): return "1"
+    if label.lower().startswith(yes_no_question_starts): return "Yes"
+    return None
+
+
 # Function to answer common questions for Easy Apply
 def answer_common_questions(label: str, answer: str | None) -> str | None:
     auth_answer = work_authorization_answer(label)
@@ -1028,11 +1075,13 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         answer = work_location
                 else:
                     answer = answer_common_questions(label, answer)
+                # 1. question_answers.csv wins over everything.
                 bank_answer = answer_from_question_bank(label_org)
                 if bank_answer is not None:
                     answer = bank_answer
                 if answer is None:
                     answer = resume_binary_answer(label_org, optionsText)
+                # 2. AI, aiming for the strongest answer for this role.
                 if answer is None and use_AI and aiClient:
                     ai_options = [option for option in optionsText if option.strip().lower() != "select an option"]
                     if ai_options:
@@ -1040,8 +1089,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             answer = answer_question(
                                 aiClient, label_org, options=ai_options,
                                 question_type="single_select", job_description=job_description,
-                                user_information_all=ai_user_information)
-                            record_question_for_review(label_org, answer, "select")
+                                user_information_all=ai_user_information) or None
                         except Exception as e:
                             logger.warning("Failed to get AI answer for select question! %s", e)
                 try:
@@ -1050,18 +1098,23 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 except NoSuchElementException:
                     # The exact text isn't an option; map our answer onto the nearest option.
                     matched = match_answer_to_option(answer, optionsText)
+                    if matched is None:
+                        # 3. Last resort: "Yes" / "1" when such an option exists.
+                        fallback = fallback_answer(label_org, optionsText)
+                        if fallback is not None:
+                            print_lg(f'No CSV/AI answer for "{label_org}". Using fallback "{fallback}".')
+                            matched = optionsText.index(fallback)
                     if matched is not None:
                         select.select_by_visible_text(optionsText[matched])
                         answer = optionsText[matched]
                     else:
-                        # Never guess: a random pick gets submitted as a real answer. Leave the
-                        # dropdown alone so LinkedIn blocks Next and the failed-question path
-                        # (pause_at_failed_question, else a failed application) takes over.
+                        # Nothing fits. Leave the dropdown alone so LinkedIn blocks Next and the
+                        # failed-question path (pause, else skip the job) takes over.
                         print_lg(f'No option matched "{answer or "a configured answer"}" for "{label_org}". Leaving it unanswered instead of guessing.')
-                        record_question_for_review(label_org, answer, "select")
                         answer = prev_answer
                         randomly_answered_questions.add((f'{label_org} [ {options} ]', "select"))
                         unanswered_questions.add(f'{label_org} [ {options} ]')
+                if bank_answer is None: record_question_for_review(label_org, answer, "select")
             else: answer = prev_answer
             questions_list.add((f'{label_org} [ {options} ]', answer, "select", prev_answer))
             continue
@@ -1090,6 +1143,10 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
             answer = None
             label = label_org.lower()
 
+            # The bare question, for the CSV lookup, AI and the review file. `label_org` gets
+            # the option list appended below, and "rstrip(' [ ')" never removed it, so radio
+            # questions could not match a row in question_answers.csv.
+            question_text = label_org
             label_org += ' [ '
             options = radio.find_elements(By.TAG_NAME, 'input')
             options_labels = []
@@ -1114,7 +1171,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 elif label_has(label, 'disability', 'handicapped'): 
                     answer = disability_status
                 else: answer = answer_common_questions(label,answer)
-                bank_answer = answer_from_question_bank(label_org.rstrip(' [ '))
+                bank_answer = answer_from_question_bank(question_text)
                 if bank_answer is not None:
                     answer = bank_answer
                 if answer is None:
@@ -1122,33 +1179,43 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 if answer is None and use_AI and aiClient and option_texts:
                     try:
                         answer = answer_question(
-                            aiClient, label_org.rstrip(' [ '), options=option_texts,
+                            aiClient, question_text, options=option_texts,
                             question_type="single_select", job_description=job_description,
-                            user_information_all=ai_user_information)
-                        record_question_for_review(label_org.rstrip(' [ '), answer, "radio")
+                            user_information_all=ai_user_information) or None
                     except Exception as e:
                         logger.warning("Failed to get AI answer for radio question! %s", e)
                 foundOption = try_xp(radio, f".//label[normalize-space()='{answer}']", False) if answer else False
-                if foundOption: 
+                if foundOption:
                     actions.move_to_element(foundOption).click().perform()
+                    chosen_text = answer
                 else:
                     matched = match_answer_to_option(answer, option_texts)
                     if matched is None:
-                        # Never guess: `options[0]` clicked whatever LinkedIn rendered first
-                        # and submitted it as a real answer - the radio twin of the
-                        # `select_by_index(randint(...))` that was removed from the dropdown.
-                        # Leave the group untouched so the stall guard skips the job.
+                        # Last resort: "Yes" (or "1") when the group has such an option.
+                        fallback = fallback_answer(question_text, option_texts)
+                        if fallback is not None:
+                            print_lg(f'No CSV/AI answer for "{question_text}". Using fallback "{fallback}".')
+                            matched = option_texts.index(fallback)
+                    if matched is None:
+                        # Never pick blindly: `options[0]` clicked whatever LinkedIn rendered
+                        # first. Leave the group untouched so the stall guard skips the job.
                         print_lg(f'No option matched "{answer}" for "{label_org} ]". Leaving it unanswered instead of guessing.')
-                        record_question_for_review(label_org.rstrip(' [ '), answer, "radio")
                         answer = prev_answer
                         randomly_answered_questions.add((f'{label_org} ]',"radio"))
                         unanswered_questions.add(f'{label_org} ]')
                     else:
                         try: actions.move_to_element(options[matched]).click().perform()
-                        except WebDriverException:
-                            # The current form's radio inputs can be visually hidden (no size).
-                            driver.execute_script("arguments[0].click();", options[matched])
+                        except WebDriverException: pass
+                        # The current form's radio inputs are visually hidden, so a mouse click at
+                        # their position can land on a neighbour and select nothing. Verify.
+                        try:
+                            if not options[matched].is_selected():
+                                driver.execute_script("arguments[0].click();", options[matched])
+                        except (AttributeError, WebDriverException): pass
                         answer = options_labels[matched]
+                    chosen_text = option_texts[matched] if matched is not None else ""
+                if bank_answer is None:
+                    record_question_for_review(question_text, chosen_text, "radio")
             else: answer = prev_answer
             questions_list.add((label_org+" ]", answer, "radio", prev_answer))
             continue
@@ -1166,7 +1233,12 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
             label = label_org.lower()
 
             prev_answer = text.get_attribute("value")
-            if not prev_answer or overwrite_previous_answers:
+            # LinkedIn rejected the current value ("Invalid input"/"Enter a whole number"):
+            # e.g. a CSV answer "Negotiable" typed into a number-only field. Re-answer it with
+            # a number instead of looping on Next until the attempt ceiling.
+            rejected = bool(prev_answer) and not is_number(prev_answer) and field_shows_error(Question)
+            if rejected: print_lg(f'LinkedIn rejected "{prev_answer}" for "{label_org}". Answering with a number instead.')
+            if not prev_answer or overwrite_previous_answers or rejected:
                 auth_answer = work_authorization_answer(label)
                 if auth_answer is not None: answer = auth_answer
                 elif label_has(label, 'experience', 'years'):
@@ -1225,34 +1297,38 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 elif label_has(label, 'country'): answer = country
                 else: answer = answer_common_questions(label,answer)
                 bank_answer = answer_from_question_bank(label_org)
-                if bank_answer is not None:
+                if bank_answer is not None and not (rejected and not is_number(bank_answer)):
                     answer = bank_answer
+                if rejected and not is_number(answer): answer = ""
                 if answer == "":
                     ai_answer = ""
                     if use_AI and aiClient:
                         try:
-                            ai_answer = answer_question(aiClient, label_org, question_type="text", job_description=job_description, user_information_all=ai_user_information)
+                            ai_answer = answer_question(aiClient, label_org + (" (answer with a number only)" if rejected else ""), question_type="text", job_description=job_description, user_information_all=ai_user_information)
+                            if rejected and not is_number(ai_answer): ai_answer = ""
                         except Exception as e:
                             logger.warning("Failed to get AI answer! %s", e)
                     if ai_answer and isinstance(ai_answer, str) and ai_answer.strip():
                         answer = normalise_numeric_ai_answer(label_org, ai_answer.strip())
                         print_lg(f'AI answered "{label_org}": "{answer}"')
-                        record_question_for_review(label_org, answer, "text")
                     else:
                         is_skill_experience = (
                             label_has(label, 'experience', 'years', 'months') and
                             (find_bad_word(label, skill_qualifier_terms) is not None or
                              find_bad_word(label, total_experience_terms) is None)
                         )
-                        if is_skill_experience:
+                        fallback = "1" if rejected and globals().get("fallback_yes_and_1", False) else fallback_answer(label_org)
+                        if fallback is not None:
+                            answer = fallback
+                            print_lg(f'No CSV/AI answer for "{label_org}". Using fallback "{answer}".')
+                        elif is_skill_experience:
                             answer = "0"
                             print_lg(f'AI did not answer "{label_org}". Using 0 as the honest numeric fallback.')
-                            record_question_for_review(label_org, answer, "text")
                         else:
-                            print_lg(f'No answer for the text question "{label_org}". Leaving it empty - add it to config/questions.py.')
-                            record_question_for_review(label_org, "", "text")
+                            print_lg(f'No answer for the text question "{label_org}". Leaving it empty - add it to all excels/question_answers.csv.')
                             randomly_answered_questions.add((label_org, "text"))
                             unanswered_questions.add(label_org)
+                if bank_answer is None: record_question_for_review(label_org, answer, "text")
                 text.clear()
                 human_type(text, answer)
                 if do_actions:
@@ -1273,6 +1349,8 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
             if not prev_answer or overwrite_previous_answers:
                 if label_has(label, 'summary'): answer = linkedin_summary
                 elif label_has(label, 'cover'): answer = cover_letter
+                bank_answer = answer_from_question_bank(label_org)
+                if bank_answer is not None: answer = bank_answer
                 if answer == "":
                     ai_answer = ""
                     if use_AI and aiClient:
@@ -1283,11 +1361,13 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                     if ai_answer and isinstance(ai_answer, str) and ai_answer.strip():
                         answer = ai_answer.strip()
                         print_lg(f'AI answered "{label_org}": "{answer}"')
-                        record_question_for_review(label_org, answer, "textarea")
+                    elif fallback_answer(label_org) is not None:
+                        answer = fallback_answer(label_org)
+                        print_lg(f'No CSV/AI answer for "{label_org}". Using fallback "{answer}".')
                     else:
-                        record_question_for_review(label_org, "", "textarea")
                         randomly_answered_questions.add((label_org, "textarea"))
                         unanswered_questions.add(label_org)
+                    record_question_for_review(label_org, answer, "textarea")
             try:
                 text_area.clear()
                 human_type(text_area, answer)
@@ -1506,10 +1586,15 @@ def form_question_elements(modal: WebElement) -> list[WebElement]:
             const t = (c.getAttribute('type') || 'text').toLowerCase();
             if (['hidden', 'file', 'radio', 'submit', 'button', 'search'].includes(t)) return;
             if (t === 'checkbox' && /^follow /i.test(c.getAttribute('aria-label') || '')) return;
+            // Without a <label>, the question is a sibling <p> that repeats the aria-label;
+            // the block holding it also holds LinkedIn's "Invalid input" message.
+            const question = (c.getAttribute('aria-label') || '').trim();
+            const hasOwnLabel = c.id && root.querySelector('label[for="' + CSS.escape(c.id) + '"]');
             let e = c.parentElement;
             while (e && e !== root) {
-                const hasLabel = c.id && e.querySelector('label[for="' + CSS.escape(c.id) + '"]');
-                if (hasLabel && (e.innerText || '').trim()) break;
+                const text = (e.innerText || '').trim();
+                if (hasOwnLabel ? (e.querySelector('label[for="' + CSS.escape(c.id) + '"]') && text)
+                                : (question ? text.includes(question) : text)) break;
                 e = e.parentElement;
             }
             add(e && e !== root ? e : c.parentElement);
@@ -1740,6 +1825,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
     searches = [job_description] if job_description else list(search_terms)
     if randomize_search_order and not job_description: shuffle(searches)
     for searchTerm in searches:
+        if use_AI: reset_ai_availability()   # a quota error from the previous role may be over
         driver.get(_search_url(searchTerm))
         print_lg("\n________________________________________________________________________________________________________________________\n")
         print_lg(f'\n>>>> Now searching for "{searchTerm}" <<<<\n\n')

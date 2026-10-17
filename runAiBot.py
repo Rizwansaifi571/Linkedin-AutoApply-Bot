@@ -922,6 +922,48 @@ yes_no_question_starts = ('do ', 'does ', 'did ', 'are ', 'is ', 'have ', 'has '
                           'will ', 'would ', 'should ', 'were ', 'was ', 'may ', 'okay ', 'ok ')
 
 
+def clear_field(field: WebElement) -> None:
+    '''
+    Empty a text input / textarea so typing REPLACES its value. LinkedIn's inputs are React
+    controlled: Selenium's clear() changes the DOM value without the input event, React puts
+    the old value back, and the next keystrokes were appended ("8745943319" twice).
+    Select-all + Backspace are real key events, so React sees them.
+    '''
+    try: field.clear()
+    except Exception: pass
+    try:
+        if field.get_attribute("value"):
+            field.send_keys(Keys.CONTROL, "a")
+            field.send_keys(Keys.BACKSPACE)
+    except Exception: pass
+    try:
+        if field.get_attribute("value"):
+            # Last resort: React's own value setter plus the event it listens to.
+            driver.execute_script('''
+                const el = arguments[0];
+                const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, '');
+                el.dispatchEvent(new Event('input', {bubbles: true}));''', field)
+    except Exception: pass
+
+
+def fill_field(field: WebElement, answer: str) -> None:
+    '''Replace the field's value with `answer`; leaves it alone if it already holds it.'''
+    answer = str(answer or "")
+    try:
+        if (field.get_attribute("value") or "") == answer: return
+    except Exception: pass
+    clear_field(field)
+    human_type(field, answer)
+    try:
+        typed = field.get_attribute("value") or ""
+        if typed and typed != answer:
+            # Wrong value (e.g. the old one came back and ours was appended): once more.
+            clear_field(field)
+            human_type(field, answer)
+    except Exception: pass
+
+
 def is_number(text) -> bool:
     return bool(re.fullmatch(r'\s*\d+(?:[.,]\d+)*\s*', str(text or '')))
 
@@ -1332,8 +1374,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             randomly_answered_questions.add((label_org, "text"))
                             unanswered_questions.add(label_org)
                 if bank_answer is None: record_question_for_review(label_org, answer, "text")
-                text.clear()
-                human_type(text, answer)
+                fill_field(text, answer)
                 if do_actions:
                     sleep(2)
                     actions.send_keys(Keys.ARROW_DOWN)
@@ -1377,8 +1418,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 # Not overwriting: the clear-and-type below used to wipe the prefilled text.
                 answer = prev_answer
             try:
-                text_area.clear()
-                human_type(text_area, answer)
+                fill_field(text_area, answer)
             except StaleElementReferenceException:
                 # LinkedIn replaces the textarea after clear(), so reacquire the matching
                 # form element before typing the AI response.
@@ -1393,8 +1433,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         continue
                 if refreshed_text_area is None:
                     raise
-                refreshed_text_area.clear()
-                human_type(refreshed_text_area, answer)
+                fill_field(refreshed_text_area, answer)
                 text_area = refreshed_text_area
             questions_list.add((label, text_area.get_attribute("value"), "textarea", prev_answer))
             continue

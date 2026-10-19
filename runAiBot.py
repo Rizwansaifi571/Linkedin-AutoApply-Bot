@@ -973,7 +973,20 @@ def fill_field(field: WebElement, answer: str) -> None:
         if (field.get_attribute("value") or "") == answer: return
     except Exception: pass
     clear_field(field)
-    human_type(field, answer)
+    try: human_type(field, answer)
+    except ElementNotInteractableException:
+        # Covered or off-screen input: scroll to it once, else set it the way React expects.
+        try:
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", field)
+            human_type(field, answer)
+        except ElementNotInteractableException:
+            driver.execute_script('''
+                const el = arguments[0];
+                const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, arguments[1]);
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));''', field, answer)
+            return
     try:
         typed = field.get_attribute("value") or ""
         if typed and typed != answer:
@@ -1015,6 +1028,13 @@ def fallback_answer(label: str, options: list[str] | None = None) -> str | None:
     instructed = re.search(r'\b(?:select|choose|answer|mark|click)\s+["\']?(yes|no)\b', label, re.IGNORECASE)
     if options is not None:
         real_options = [o for o in options if o.strip() and o.strip().lower() != "select an option"]
+        # Work-experience date dropdowns ("Month" / "Year", no label): January of last year.
+        lowered = [o.strip().lower() for o in real_options]
+        if "january" in lowered and "december" in lowered:
+            return real_options[lowered.index("january")]
+        last_year = str(datetime.now().year - 1)
+        if last_year in lowered and sum(is_number(o) for o in real_options) >= 5:
+            return real_options[lowered.index(last_year)]
         candidates = ["1", "Yes"] if is_numeric_question(label) else ["Yes", "1"]
         if instructed: candidates = [instructed.group(1).capitalize()]
         for candidate in candidates:
@@ -1485,6 +1505,9 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 option_low = answer.strip().lower()
                 explicitly_checked = saved_answer_low in {'yes', 'true', 'checked', 'select', 'selected'}
                 explicitly_checked = explicitly_checked or (option_low and option_low in saved_answer_low)
+                # Work-experience entry: "currently work here" removes the required end date.
+                if globals().get("fallback_yes_and_1", False) and saved_answer is None and 'currently work here' in f'{label_org} {answer}'.lower():
+                    explicitly_checked = True
                 # Never tick a box just because it is there. Every unticked checkbox used to
                 # be clicked, which silently agreed to whatever it said: "I certify I am a
                 # U.S. citizen", "I consent to a background check", "I agree to the terms".
@@ -2153,14 +2176,17 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                         screenshot_name = screenshot(driver, job_id, "Failed at questions")
                                         errored = "stuck"
                                         raise Exception("Seems like stuck in a continuous loop of next, probably because of new questions.")
-                                    try:
-                                        questions_list = answer_questions(modal, questions_list, work_location, job_description=description)
-                                    except StaleElementReferenceException:
-                                        # The form re-rendered while being filled (e.g. after typing
-                                        # "Your title"). Pick up the fresh form and redo this page.
-                                        buffer(1)
-                                        modal = find_easy_apply_modal()
-                                        questions_list = answer_questions(modal, questions_list, work_location, job_description=description)
+                                    for attempt in range(4):
+                                        try:
+                                            questions_list = answer_questions(modal, questions_list, work_location, job_description=description)
+                                            break
+                                        except StaleElementReferenceException:
+                                            # The form re-rendered while being filled (e.g. after typing
+                                            # "Your title" or picking a Degree). Pick up the fresh form and
+                                            # redo this page; answered fields are skipped on the next pass.
+                                            if attempt == 3: raise
+                                            buffer(1)
+                                            modal = find_easy_apply_modal()
                                     # `pause_at_failed_question` users want the manual prompt the
                                     # counter above gives them, so only bail out when it is off.
                                     if not pause_at_failed_question and questions_are_stalled(blocked_questions):

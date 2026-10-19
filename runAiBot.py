@@ -598,17 +598,29 @@ def get_new_card_details(card: WebElement, blacklisted_companies: set, rejected_
         print_lg(f'Already applied to "{title} | {company}" job. Job ID: {job_id}!')
         skip = True
     if not skip:
-        scroll_to_view(driver, card)
-        try:
-            card.click()
-        except ElementClickInterceptedException:
-            driver.execute_script("arguments[0].click();", card)
-        try:
-            # The section's heading renders before its text, so wait for real content.
-            WebDriverWait(driver, 15).until(lambda d: d.execute_script(
-                "const e = document.querySelector(arguments[0]); return !!e && e.innerText.trim().length > 40;",
-                f"[componentkey='JobDetails_AboutTheJob_{job_id}']"))
-        except TimeoutException:
+        loaded = False
+        for attempt in range(2):
+            scroll_to_view(driver, card)
+            try:
+                # A mouse-style click is silently dropped while Chrome is minimised, and can be
+                # lost while the page hydrates. The retry dispatches the click from JavaScript,
+                # which works whatever the window state.
+                if attempt == 0: card.click()
+                else: driver.execute_script("arguments[0].click();", card)
+            except (ElementClickInterceptedException, StaleElementReferenceException):
+                try: driver.execute_script("arguments[0].click();", card)
+                except StaleElementReferenceException: pass
+            try:
+                # The section's heading renders before its text, so wait for real content.
+                # textContent, not innerText: innerText reads "" in a throttled background window.
+                WebDriverWait(driver, 10).until(lambda d: d.execute_script(
+                    "const e = document.querySelector(arguments[0]); return !!e && e.textContent.trim().length > 40;",
+                    f"[componentkey='JobDetails_AboutTheJob_{job_id}']"))
+                loaded = True
+                break
+            except TimeoutException:
+                continue
+        if not loaded:
             logger.warning('The details of "%s | %s" did not load. Job ID: %s', title, company, job_id)
             skip = True
         buffer(click_gap)
@@ -1877,6 +1889,18 @@ def easy_apply_limit_shown(time: float = 3.0) -> bool:
         return False
 
 
+def keep_page_active() -> None:
+    '''
+    Make LinkedIn behave as if its tab were visible and focused. A minimised Chrome reports
+    the page "hidden" and stops rendering it (0 animation frames), so clicked job cards never
+    loaded ("The details of ... did not load"). Applied after each navigation.
+    '''
+    for command, params in (("Emulation.setFocusEmulationEnabled", {"enabled": True}),
+                            ("Page.setWebLifecycleState", {"state": "active"})):
+        try: driver.execute_cdp_cmd(command, params)
+        except Exception as e: logger.debug("CDP %s unavailable: %s", command, e)
+
+
 def browser_is_alive() -> bool:
     '''False only when the window was closed or the WebDriver session is gone.'''
     try:
@@ -1926,6 +1950,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
     for searchTerm in searches:
         if use_AI: reset_ai_availability()   # a quota error from the previous role may be over
         driver.get(_search_url(searchTerm))
+        keep_page_active()                   # keep working while Chrome is minimised
         print_lg("\n________________________________________________________________________________________________________________________\n")
         print_lg(f'\n>>>> Now searching for "{searchTerm}" <<<<\n\n')
 
@@ -2128,7 +2153,14 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                         screenshot_name = screenshot(driver, job_id, "Failed at questions")
                                         errored = "stuck"
                                         raise Exception("Seems like stuck in a continuous loop of next, probably because of new questions.")
-                                    questions_list = answer_questions(modal, questions_list, work_location, job_description=description)
+                                    try:
+                                        questions_list = answer_questions(modal, questions_list, work_location, job_description=description)
+                                    except StaleElementReferenceException:
+                                        # The form re-rendered while being filled (e.g. after typing
+                                        # "Your title"). Pick up the fresh form and redo this page.
+                                        buffer(1)
+                                        modal = find_easy_apply_modal()
+                                        questions_list = answer_questions(modal, questions_list, work_location, job_description=description)
                                     # `pause_at_failed_question` users want the manual prompt the
                                     # counter above gives them, so only bail out when it is off.
                                     if not pause_at_failed_question and questions_are_stalled(blocked_questions):
@@ -2141,6 +2173,8 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                     # Scoped to the dialog on purpose: a document-wide search
                                     # for "Next" matches the search results PAGINATION control
                                     # (aria-label "View next page") and paged away mid-application.
+                                    try: modal.tag_name                      # still the live form?
+                                    except StaleElementReferenceException: modal = find_easy_apply_modal()
                                     try: next_button = modal.find_element(By.XPATH, review_button_xpath)
                                     except NoSuchElementException:  next_button = modal.find_element(By.XPATH, next_button_xpath)
                                     try: next_button.click()
@@ -2157,6 +2191,13 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                 if questions_list and errored != "stuck": 
                                     print_lg("Answered the following questions...", questions_list)
                                     print("\n\n" + "\n".join(str(question) for question in questions_list) + "\n\n")
+                                # The form may have re-rendered: Review/Submit on a stale reference
+                                # "failed" an application that was fully filled in.
+                                try: modal.tag_name
+                                except StaleElementReferenceException:
+                                    try: modal = find_easy_apply_modal(3)
+                                    except Exception: pass
+                                except Exception: pass
                                 wait_xp_click(modal, review_button_xpath, 1, scrollTop=True)
                                 cur_pause_before_submit = pause_before_submit
                                 if errored == "stuck":

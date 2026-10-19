@@ -134,6 +134,11 @@ def createChromeSession(isRetry: bool = False):
     # "--headless" is the legacy mode and is trivially detectable, "=new" runs the real browser.
     if run_in_background:   options.add_argument("--headless=new")
     if disable_extensions:  options.add_argument("--disable-extensions")
+    # Keep full speed while the window is minimised or behind other windows. Chrome throttles
+    # such pages, and LinkedIn's job panel then loaded too slowly ("details did not load").
+    for flag in ("--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows",
+                 "--disable-renderer-backgrounding"):
+        options.add_argument(flag)
 
     print_lg("IF YOU HAVE MORE THAN 10 TABS OPENED, PLEASE CLOSE OR BOOKMARK THEM! Or it's highly likely that application will just open browser and not do anything!")
     profile_dir = find_default_profile_directory()

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import threading
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -68,6 +69,29 @@ def _disable_ai_for_run(error: Exception) -> None:
     global _ai_unavailable
     _ai_unavailable = True
     logger.warning("AI unavailable for the rest of this run. Using local answers and fallbacks. %s", error)
+
+
+AI_CALL_TIMEOUT_SECONDS = 45
+
+
+def _with_deadline(call, *args, **kwargs):
+    '''
+    Run one AI request with a hard deadline. With no timeout a stalled provider request
+    blocked the bot forever (the log stopped right after reading a job description). The
+    stalled request is left in a daemon thread, so it can't block the bot from exiting
+    either; the caller treats the TIMEOUT like any other outage.
+    '''
+    outcome = {}
+    def run():
+        try: outcome["value"] = call(*args, **kwargs)
+        except BaseException as e: outcome["error"] = e
+    worker = threading.Thread(target=run, daemon=True, name="ai-call")
+    worker.start()
+    worker.join(AI_CALL_TIMEOUT_SECONDS)
+    if worker.is_alive():
+        raise TimeoutError(f"TIMEOUT: the AI provider did not answer within {AI_CALL_TIMEOUT_SECONDS} seconds")
+    if "error" in outcome: raise outcome["error"]
+    return outcome.get("value")
 
 
 def reset_ai_availability() -> None:
@@ -207,7 +231,7 @@ def extract_skills(client: Optional[AIClient], job_description: str, stream: boo
     prompt = extract_skills_prompt.format(job_description)
     try:
         structured = client.model.with_structured_output(ExtractedSkills)
-        result = structured.invoke(prompt)
+        result = _with_deadline(structured.invoke, prompt)
         return result.model_dump()
     except Exception as e:
         if _is_transient_ai_error(e):
@@ -216,7 +240,7 @@ def extract_skills(client: Optional[AIClient], job_description: str, stream: boo
         # Some local or older models don't support structured output — fall back to plain JSON parsing.
         logger.warning("Structured skill extraction unavailable, falling back to plain parsing. %s", e)
         try:
-            return convert_to_json(_msg_text(client.model.invoke(prompt)))
+            return convert_to_json(_msg_text(_with_deadline(client.model.invoke, prompt)))
         except Exception as e2:
             if _is_transient_ai_error(e2):
                 _disable_ai_for_run(e2)
@@ -325,7 +349,7 @@ def answer_question(
     if cache_key in _answer_cache:
         return _answer_cache[cache_key]
     try:
-        final = client.answer_graph.invoke({
+        final = _with_deadline(client.answer_graph.invoke, {
             "question": question,
             "options": options,
             "question_type": question_type,

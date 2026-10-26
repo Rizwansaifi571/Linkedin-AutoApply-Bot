@@ -1042,6 +1042,9 @@ def fallback_answer(label: str, options: list[str] | None = None) -> str | None:
             if matched is not None: return real_options[matched]
         return None
     if instructed: return instructed.group(1).capitalize()
+    # "Rate yourself on DSA (1-10)": 1 is the worst score, not a safe default.
+    if re.search(r'\b(?:rate|rating|scale)\b|out of\s*(?:5|10)\b', label, re.IGNORECASE):
+        return "4" if re.search(r'out of\s*5\b|\b1\s*-\s*5\b|\b5\s*point', label, re.IGNORECASE) else "8"
     if is_numeric_question(label): return "1"
     if label.lower().startswith(yes_no_question_starts): return "Yes"
     return None

@@ -43,8 +43,8 @@ if use_AI:
 YC_SEARCH_TERMS = ["Software Engineer", "Software Developer", "Full Stack Developer", "Backend Engineer",
                    "Python Developer", "React Developer", "AI Engineer", "Machine Learning Engineer"]
 YC_RANDOMIZE_ORDER = False
-YC_MAX_APPLICATIONS = 40            # stop after this many messages sent in one run
-YC_MAX_JOBS_PER_TERM = 30           # how many "View job" links to collect per search term
+YC_APPLICATIONS_PER_TERM = 30       # messages to send for each search term, then move to the next term
+YC_MAX_JOBS_PER_TERM = 150          # "View job" links to collect per term; skipped/already-applied ones don't count toward the 30
 YC_OPEN_TO_RELOCATE = True          # tick the "I'm open to relocating" box when YC shows it
 YC_LOGIN_WAIT_SECONDS = 300
 YC_DRY_RUN = False                  # True = write the message but do NOT click Send
@@ -94,6 +94,40 @@ Job posting:
 # A timed-out AI call costs 45s, so after one failure stay on templates for a while.
 AI_COOLDOWN_SECONDS = 300
 ai_down_until = [0.0]
+
+
+class RateLimited(Exception):
+    """Work at a Startup is refusing us (too many requests/messages). The run stops at once."""
+
+
+RATE_LIMIT_RE = re.compile(
+    r"rate.?limit|too many (?:requests|applications|messages|attempts)|slow down|"
+    r"(?:limit|quota) (?:has been )?(?:reached|exceeded)|daily (?:application |message )?limit|"
+    r"try again (?:later|tomorrow)|temporarily (?:blocked|restricted)", re.I)
+
+
+def check_rate_limit() -> None:
+    """Raise RateLimited when the page, or a dialog/alert/toast on it, reports a rate limit.
+
+    Only short, UI-sized text is checked (an error page, a dialog, a toast), never a whole job
+    description, so a posting that merely mentions "rate limiting" can't stop the run.
+    """
+    try:
+        texts = [driver.title or ""]
+        for element in driver.find_elements(By.XPATH, "//*[@role='alert' or @role='dialog' or @role='status' or contains(@class,'toast') or contains(@class,'Toastify') or contains(@class,'error')]"):
+            try:
+                if element.is_displayed():
+                    texts.append(element.text or "")
+            except WebDriverException:
+                continue
+        body = driver.find_element(By.TAG_NAME, "body").text
+        if len(body) < 700:             # an error page has almost no text
+            texts.append(body)
+    except WebDriverException:
+        return
+    for text in texts:
+        if text and len(text) < 1500 and RATE_LIMIT_RE.search(text):
+            raise RateLimited(re.sub(r"\s+", " ", text).strip()[:200])
 
 
 def pause(low: float = 1.0, high: float = 2.5) -> None:
@@ -365,6 +399,7 @@ def apply_with_message(client, message: str, title: str, company: str, descripti
     handles = set(driver.window_handles)
     click(apply_button)
     pause(1.5, 2.5)
+    check_rate_limit()
     # If Apply opened a new tab, work in it and close it afterwards.
     new_tabs = [h for h in driver.window_handles if h not in handles]
     origin = driver.current_window_handle
@@ -402,6 +437,7 @@ def apply_with_message(client, message: str, title: str, company: str, descripti
             return "failed: no Send button", joined
         click(send)
         pause(2.5, 3.5)
+        check_rate_limit()
         if first_displayed("//textarea | //select | //input[@type='text']"):
             return "failed: dialog still open after Send (a required field is missing or invalid)", joined
         return "applied", joined
@@ -426,24 +462,36 @@ def run() -> None:
     make_directories([YC_APPLIED_FILE])
     client = create_ai_client() if use_AI else None
     applied = load_applied()
-    sent = 0
+    sent = [0]      # a list so run_terms can update it and a rate-limit exit still reports the count
 
     ensure_login()
     terms = list(YC_SEARCH_TERMS)
     if YC_RANDOMIZE_ORDER:
         shuffle(terms)
 
+    try:
+        run_terms(client, terms, applied, sent)
+    except RateLimited as e:
+        print_lg(f"\nRATE LIMITED by Work at a Startup: {e}")
+        print_lg("Stopping now so the account is not pushed further. Try again later (hours, or tomorrow).")
+    print_lg(f"\nDone. Messages sent this run: {sent[0]}. Log: {YC_APPLIED_FILE}")
+    if client:
+        close_ai_client(client)
+
+
+def run_terms(client, terms, applied, sent) -> None:
     for term in terms:
-        if sent >= YC_MAX_APPLICATIONS:
-            break
+        term_sent = 0
         print_lg(f'\n=== Searching Work at a Startup for "{term}" ===')
         driver.get(search_url(term))
         pause(3, 4.5)
+        check_rate_limit()
         links = collect_job_links(YC_MAX_JOBS_PER_TERM)
         print_lg(f"Found {len(links)} jobs.")
 
         for url in links:
-            if sent >= YC_MAX_APPLICATIONS:
+            if term_sent >= YC_APPLICATIONS_PER_TERM:
+                print_lg(f'Sent {term_sent} messages for "{term}", moving to the next term.')
                 break
             jid = job_id(url)
             if jid in applied:
@@ -452,6 +500,7 @@ def run() -> None:
             try:
                 driver.get(url)
                 pause(2, 3.5)
+                check_rate_limit()
                 title, company, description = read_job()
                 print_lg(f"\n{title} @ {company}  ({url})")
 
@@ -471,9 +520,11 @@ def run() -> None:
                 if status in ("applied", "already-applied"):
                     applied.add(jid)
                     if status == "applied":
-                        sent += 1
+                        sent[0] += 1
+                        term_sent += 1
                     log_job(jid, url, title, company, status, message)
                 elif status == "dry-run":
+                    term_sent += 1
                     close_dialog()
                 else:
                     close_dialog()
@@ -486,10 +537,6 @@ def run() -> None:
                 except WebDriverException:
                     pass
             pause(2, 4)
-
-    print_lg(f"\nDone. Messages sent this run: {sent}. Log: {YC_APPLIED_FILE}")
-    if client:
-        close_ai_client(client)
 
 
 if __name__ == "__main__":

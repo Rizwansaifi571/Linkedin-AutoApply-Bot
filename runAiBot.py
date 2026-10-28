@@ -1861,6 +1861,8 @@ def _search_url(query: str) -> str:
         params["location"] = search_location.strip()
         if search_location.strip().casefold() == "india":
             params["geoId"] = "102713980"
+        elif search_location.strip().casefold() == "united states":
+            params["geoId"] = "103644278"
     # LinkedIn keeps the active filters in the URL. This is both quicker and
     # more reliable than opening its frequently changing "All filters" modal.
     # Accept a complete query string pasted from the browser, with or without

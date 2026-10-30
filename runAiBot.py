@@ -572,6 +572,39 @@ def split_work_location(work_location: str) -> tuple[str, str]:
     return work_location, "Unknown"
 
 
+# Jobs whose detail pane never loaded: they are applied to without the description-based filters.
+details_not_loaded: set[str] = set()
+
+# True once the right pane shows a real "About the job" body for the selected job. LinkedIn
+# renames the section's componentkey between builds, so besides the known key this also
+# accepts any JobDetails_AboutTheJob* section and finally any text node reading "About the
+# job" whose enclosing block holds real text. textContent, not innerText: innerText reads ""
+# in a throttled background window.
+DETAILS_LOADED_JS = r"""
+    const id = arguments[0];
+    const text = e => !!e && e.textContent.trim().length > 40;
+    if (text(document.querySelector(`[componentkey='JobDetails_AboutTheJob_${id}']`))) return true;
+    if (!location.href.includes(id)) return false;
+    if ([...document.querySelectorAll("[componentkey*='AboutTheJob']")].some(text)) return true;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walker.nextNode());) {
+        if (!/^\s*About the job\s*$/i.test(n.nodeValue)) continue;
+        for (let e = n.parentElement, i = 0; e && i < 6; e = e.parentElement, i++)
+            if (e.textContent.trim().length > 200) return true;
+    }
+    return false;"""
+
+# Logged when the pane never loads, so a changed layout can be fixed from the log alone.
+DETAILS_DIAGNOSTICS_JS = r"""
+    return JSON.stringify({
+        url: location.href.slice(0, 160),
+        keys: [...new Set([...document.querySelectorAll('[componentkey]')]
+            .map(e => e.getAttribute('componentkey')).filter(k => /detail|about|job/i.test(k) && !/^job-card/.test(k)))].slice(0, 30),
+        headings: [...document.querySelectorAll('h1,h2,h3')].map(h => h.textContent.trim().slice(0, 40)).slice(0, 15),
+        hasAboutText: /about the job/i.test(document.body.textContent),
+    });"""
+
+
 def get_new_card_details(card: WebElement, blacklisted_companies: set, rejected_jobs: set) -> tuple[str, str, str, str, str, bool]:
     '''
     `get_job_main_details` for the current search-results card: a div[role=button] whose
@@ -613,16 +646,18 @@ def get_new_card_details(card: WebElement, blacklisted_companies: set, rejected_
             try:
                 # The section's heading renders before its text, so wait for real content.
                 # textContent, not innerText: innerText reads "" in a throttled background window.
-                WebDriverWait(driver, 10).until(lambda d: d.execute_script(
-                    "const e = document.querySelector(arguments[0]); return !!e && e.textContent.trim().length > 40;",
-                    f"[componentkey='JobDetails_AboutTheJob_{job_id}']"))
+                # Prefer this job's own section; otherwise accept any "About the job" section
+                # (or a heading of that name) once the URL says this job is the selected one.
+                WebDriverWait(driver, 10).until(lambda d: d.execute_script(DETAILS_LOADED_JS, job_id))
                 loaded = True
                 break
             except TimeoutException:
                 continue
         if not loaded:
-            logger.warning('The details of "%s | %s" did not load. Job ID: %s', title, company, job_id)
-            skip = True
+            logger.warning('The details of "%s | %s" did not load. Job ID: %s. Applying without the description checks.', title, company, job_id)
+            details_not_loaded.add(job_id)
+            try: logger.warning("Detail-pane diagnostics: %s", driver.execute_script(DETAILS_DIAGNOSTICS_JS))
+            except WebDriverException: pass
         buffer(click_gap)
     return (job_id, title, company, work_location, work_style, skip)
 
@@ -762,14 +797,14 @@ def find_job_top_card(job_id: str) -> WebElement:
     except ValueError:
         # Current layout: the nearest ancestor of "About the job" that also holds the header.
         return driver.find_element(By.XPATH,
-            f"//*[@componentkey='JobDetails_AboutTheJob_{job_id}']/ancestor::*[.//p[contains(., ' ago')]][1]")
+            "//*[starts-with(@componentkey, 'JobDetails_AboutTheJob')]/ancestor::*[.//p[contains(., ' ago')]][1]")
 
 
 def find_about_company(job_id: str) -> WebElement:
     try:
         return find_by_class(driver, "jobs-company__box", 1)
     except TimeoutException:
-        return driver.find_element(By.CSS_SELECTOR, f"[componentkey='JobDetails_AboutTheCompany_{job_id}']")
+        return driver.find_element(By.CSS_SELECTOR, "[componentkey^='JobDetails_AboutTheCompany']")
 
 
 def check_blacklist(rejected_jobs: set, job_id: str, company: str, blacklisted_companies: set) -> tuple[set, set, WebElement]:
@@ -860,6 +895,19 @@ def get_job_description(
                 if description_text: break
             if description_text: break
         if not description_element:
+            # Layout-independent fallback: the smallest block under the "About the job"
+            # heading that holds a real body of text.
+            description_element = driver.execute_script(r"""
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                for (let n; (n = walker.nextNode());) {
+                    if (!/^\s*About the job\s*$/i.test(n.nodeValue)) continue;
+                    for (let e = n.parentElement, i = 0; e && i < 6; e = e.parentElement, i++)
+                        if (e.textContent.trim().length > 200) return e;
+                }
+                return null;""")
+            if description_element:
+                description_text = (description_element.get_attribute("textContent") or "").strip()
+        if not description_element:
             raise NoSuchElementException("LinkedIn job description panel was not found")
         if not description_text:
             # Leave jobDescription as "Unknown" so the except below skips the job: an empty
@@ -916,11 +964,9 @@ def get_job_description(
     except Exception as e:
         if jobDescription == "Unknown":
             # We never read the description, so the bad words, security clearance and
-            # experience filters never ran. Skip instead of applying to an unread job.
-            logger.warning("Unable to extract job description! %s", e)
-            skipReason = "Unable to read the job description"
-            skipMessage = f'\nCouldn\'t read the job description, so none of the skip filters could run. Skipping this job!\n{e}\n'
-            skip = True
+            # experience filters never ran.
+            # Applying anyway is deliberate: the description filters are best-effort.
+            logger.warning("Unable to extract job description, applying without the description filters. %s", str(e).splitlines()[0])
         else:
             experience_required = "Error in extraction"
             logger.warning("Unable to extract years of experience required! %s", e)
@@ -1519,7 +1565,10 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 # CSV match is the user's stored decision and may select an ordinary option.
                 term = find_bad_word(f'{label_org} {answer}', attestation_terms)
                 if explicitly_checked and not term:
-                    checkbox.click()
+                    # The native <input> is often visually hidden behind a styled label.
+                    try: checkbox.click()
+                    except (ElementNotInteractableException, ElementClickInterceptedException):
+                        driver.execute_script("arguments[0].click();", checkbox)
                     checked = True
                 else:
                     blocked = f'{label_org} ([ ] {answer})'
@@ -2099,7 +2148,10 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                         logger.warning("Failed to calculate the date posted! %s", e)
 
 
-                    description, experience_required, skip, reason, message = get_job_description()
+                    if job_id in details_not_loaded:
+                        description, experience_required, skip, reason, message = "Unknown", "Unknown", False, None, None
+                    else:
+                        description, experience_required, skip, reason, message = get_job_description()
                     if skip:
                         print_lg(message)
                         failed_job(job_id, job_link, resume, date_listed, reason, message, "Skipped", screenshot_name)

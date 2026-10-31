@@ -785,6 +785,22 @@ def match_answer_to_option(answer: str | None, option_texts: list[str]) -> int |
     return None
 
 
+def match_eeo_option(question: str, answer: str | None, option_texts: list[str]) -> int | None:
+    '''
+    Veteran / disability questions word their options as sentences ("I am not a protected
+    veteran", "No, I do not have a disability...", "I prefer not to specify"), so a plain
+    "No" matches nothing and the required question blocked the form. A "No" maps to the
+    option that denies the status, else to the decline option; any other answer is left alone.
+    '''
+    if not label_has(question.lower(), 'veteran', 'protected', 'disability', 'disabled', 'handicapped'): return None
+    if not answer or not find_bad_word(answer, ['no']): return None
+    for phrases in (("not a protected", "not a veteran", "not a disabled", "do not have", "don't have", "have not had", "no, i"),
+                    ("prefer not", "don't wish", "do not wish", "decline", "not to specify", "not to answer")):
+        for i, option in enumerate(option_texts):
+            if any(phrase in option.lower() for phrase in phrases): return i
+    return None
+
+
 # Function to check for Blacklisted words in About Company
 class BlacklistedCompany(ValueError):
     '''About Company contains one of `about_company_bad_words`.'''
@@ -1232,6 +1248,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 except NoSuchElementException:
                     # The exact text isn't an option; map our answer onto the nearest option.
                     matched = match_answer_to_option(answer, optionsText)
+                    if matched is None: matched = match_eeo_option(label_org, answer, optionsText)
                     if matched is None:
                         # 3. Last resort: "Yes" / "1" when such an option exists.
                         fallback = fallback_answer(label_org, optionsText)
@@ -1324,6 +1341,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                     chosen_text = answer
                 else:
                     matched = match_answer_to_option(answer, option_texts)
+                    if matched is None: matched = match_eeo_option(question_text, answer, option_texts)
                     if matched is None:
                         # Last resort: "Yes" (or "1") when the group has such an option.
                         fallback = fallback_answer(question_text, option_texts)

@@ -405,8 +405,8 @@ Released under the [MIT License](LICENSE). Read the [disclaimer and terms](docs/
 [![GitHub](https://img.shields.io/badge/GitHub-Rizwansaifi571-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Rizwansaifi571)
 [![Portfolio](https://img.shields.io/badge/Portfolio-rizwansaifi571.github.io-EC4899?style=for-the-badge&logo=googlechrome&logoColor=white)](https://rizwansaifi571.github.io/)
 
-<a href="https://github.com/Rizwansaifi571"><img src="https://github-readme-stats.vercel.app/api?username=Rizwansaifi571&show_icons=true&theme=radical&hide_border=true&border_radius=16" alt="GitHub stats" height="165"/></a>
-<a href="https://github.com/Rizwansaifi571"><img src="https://github-readme-streak-stats.herokuapp.com/?user=Rizwansaifi571&theme=radical&hide_border=true&border_radius=16" alt="GitHub streak" height="165"/></a>
+<!-- <a href="https://github.com/Rizwansaifi571"><img src="https://github-readme-stats.vercel.app/api?username=Rizwansaifi571&show_icons=true&theme=radical&hide_border=true&border_radius=16" alt="GitHub stats" height="165"/></a>
+<a href="https://github.com/Rizwansaifi571"><img src="https://github-readme-streak-stats.herokuapp.com/?user=Rizwansaifi571&theme=radical&hide_border=true&border_radius=16" alt="GitHub streak" height="165"/></a> -->
 
 ⭐ **If this saved you time, drop a star. It really helps!** ⭐
 

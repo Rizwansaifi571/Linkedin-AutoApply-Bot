@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Author:  Sai Vignesh Golla
+# Author:  Mohd Rizwan
 # License: MIT License  (https://opensource.org/license/mit)
-# GitHub:  https://github.com/GodsScion/Auto_job_applier_linkedIn
+# GitHub:  https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 #
 # Run the test suite (Linux/macOS). Sets up the environment the first time,
 # installs test dependencies, then runs pytest and prints a summary.

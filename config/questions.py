@@ -1,15 +1,13 @@
 '''
-Author:     Sai Vignesh Golla
-LinkedIn:   https://www.linkedin.com/in/saivigneshgolla/
+Author:     Mohd Rizwan
+LinkedIn:   https://www.linkedin.com/in/rizwansaifi2614/
 
-Copyright (c) 2024-2026 Sai Vignesh Golla
+Copyright (c) 2026 Mohd Rizwan
 
 License:    MIT License
             https://opensource.org/license/mit
             
-GitHub:     https://github.com/GodsScion/Auto_job_applier_linkedIn
-
-Support me: https://github.com/sponsors/GodsScion
+GitHub:     https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 
 version:    26.01.20.5.08
 '''
@@ -43,10 +41,10 @@ years_of_experience = "5"          # A number in quotes Eg: "0","1","2","3","4",
 require_visa = "No"               # "Yes" or "No"
 
 # What is the link to your portfolio website, leave it empty as "", if you want to leave this question unanswered
-website = "https://github.com/GodsScion"                        # "www.example.bio" or "" and so on....
+website = "https://rizwansaifi571.github.io/"                        # "www.example.bio" or "" and so on....
 
 # Please provide the link to your LinkedIn profile.
-linkedIn = "https://www.linkedin.com/in/saivigneshgolla/"       # "https://www.linkedin.com/in/example" or "" and so on...
+linkedIn = "https://www.linkedin.com/in/rizwansaifi2614/"       # "https://www.linkedin.com/in/example" or "" and so on...
 
 # Do you ALREADY have permission to work in the country you are applying to? (Eg: citizen, permanent resident, or a valid work visa such as H-1B or OPT)
 # This is NOT `require_visa`, which asks whether you need sponsorship. Someone on a valid work visa answers "Yes" to both.
@@ -168,14 +166,12 @@ THANK YOU for using my tool 😊! Wishing you the best in your job hunt 🙌🏻
 
 Sharing is caring! If you found this tool helpful, please share it with your peers 🥺. Your support keeps this project alive.
 
-Support my work on <PATREON_LINK>. Together, we can help more job seekers.
-
 As an independent developer, I pour my heart and soul into creating tools like this, driven by the genuine desire to make a positive impact.
 
 Your support, whether through donations big or small or simply spreading the word, means the world to me and helps keep this project alive and thriving.
 
 Gratefully yours 🙏🏻,
-Sai Vignesh Golla
+Mohd Rizwan
 '''
 
 # --- Load user settings saved by the local control panel (user_config.json).

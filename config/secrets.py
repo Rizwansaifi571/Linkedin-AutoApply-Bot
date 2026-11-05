@@ -1,15 +1,13 @@
 '''
-Author:     Sai Vignesh Golla
-LinkedIn:   https://www.linkedin.com/in/saivigneshgolla/
+Author:     Mohd Rizwan
+LinkedIn:   https://www.linkedin.com/in/rizwansaifi2614/
 
-Copyright (c) 2024-2026 Sai Vignesh Golla
+Copyright (c) 2026 Mohd Rizwan
 
 License:    MIT License
             https://opensource.org/license/mit
             
-GitHub:     https://github.com/GodsScion/Auto_job_applier_linkedIn
-
-Support me: https://github.com/sponsors/GodsScion
+GitHub:     https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 
 version:    24.12.3.10.30
 '''
@@ -67,14 +65,12 @@ THANK YOU for using my tool 😊! Wishing you the best in your job hunt 🙌🏻
 
 Sharing is caring! If you found this tool helpful, please share it with your peers 🥺. Your support keeps this project alive.
 
-Support my work on <PATREON_LINK>. Together, we can help more job seekers.
-
 As an independent developer, I pour my heart and soul into creating tools like this, driven by the genuine desire to make a positive impact.
 
 Your support, whether through donations big or small or simply spreading the word, means the world to me and helps keep this project alive and thriving.
 
 Gratefully yours 🙏🏻,
-Sai Vignesh Golla
+Mohd Rizwan
 '''
 
 # --- Load user settings saved by the local control panel (user_config.json).

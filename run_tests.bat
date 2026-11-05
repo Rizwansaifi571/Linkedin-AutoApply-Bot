@@ -1,8 +1,8 @@
 @echo off
 REM
-REM Author:  Sai Vignesh Golla
+REM Author:  Mohd Rizwan
 REM License: MIT License  (https://opensource.org/license/mit)
-REM GitHub:  https://github.com/GodsScion/Auto_job_applier_linkedIn
+REM GitHub:  https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 REM
 REM Run the test suite on Windows. Double-click this file, or run it from a
 REM terminal. It sets up the environment the first time, then runs the tests.

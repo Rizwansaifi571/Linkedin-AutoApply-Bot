@@ -1,13 +1,13 @@
 '''
-Author:     Sai Vignesh Golla
-LinkedIn:   https://www.linkedin.com/in/saivigneshgolla/
+Author:     Mohd Rizwan
+LinkedIn:   https://www.linkedin.com/in/rizwansaifi2614/
 
-Copyright (c) 2024-2026 Sai Vignesh Golla
+Copyright (c) 2026 Mohd Rizwan
 
 License:    MIT License
             https://opensource.org/license/mit
 
-GitHub:     https://github.com/GodsScion/Auto_job_applier_linkedIn
+GitHub:     https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 
 Prompt templates used by the AI layer (modules/ai/connections.py).
 '''

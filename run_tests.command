@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Author:  Sai Vignesh Golla
+# Author:  Mohd Rizwan
 # License: MIT License  (https://opensource.org/license/mit)
-# GitHub:  https://github.com/GodsScion/Auto_job_applier_linkedIn
+# GitHub:  https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 #
 # Run the test suite on macOS. Double-click this file in Finder (or run it from
 # a terminal). It sets up the environment the first time, then runs the tests.

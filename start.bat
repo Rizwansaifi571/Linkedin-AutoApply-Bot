@@ -1,9 +1,9 @@
 @echo off
 REM
-REM Author:  Sai Vignesh Golla
+REM Author:  Mohd Rizwan
 REM License: MIT License
 REM          https://opensource.org/license/mit
-REM GitHub:  https://github.com/GodsScion/Auto_job_applier_linkedIn
+REM GitHub:  https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 REM
 REM One-click launcher for Windows. Double-click this file. It sets up everything
 REM the first time, then opens the control panel in your web browser. Safe to run

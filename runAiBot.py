@@ -1,15 +1,13 @@
 '''
-Author:     Sai Vignesh Golla
-LinkedIn:   https://www.linkedin.com/in/saivigneshgolla/
+Author:     Mohd Rizwan
+LinkedIn:   https://www.linkedin.com/in/rizwansaifi2614/
 
-Copyright (c) 2024-2026 Sai Vignesh Golla
+Copyright (c) 2026 Mohd Rizwan
 
 License:    MIT License
             https://opensource.org/license/mit
             
-GitHub:     https://github.com/GodsScion/Auto_job_applier_linkedIn
-
-Support me: https://github.com/sponsors/GodsScion
+GitHub:     https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 
 version:    26.01.20.5.08
 '''
@@ -1443,7 +1441,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 elif label_has(label, 'website', 'blog', 'portfolio', 'link', 'links'): answer = website
                 elif label_has(label, 'scale of 1-10'): answer = confidence_level
                 elif label_has(label, 'headline'): answer = linkedin_headline
-                elif label_has(label, 'hear', 'heard', 'come across') and label_has(label, 'this') and label_has(label, 'job', 'position'): answer = "https://github.com/GodsScion/Auto_job_applier_linkedIn"
+                elif label_has(label, 'hear', 'heard', 'come across') and label_has(label, 'this') and label_has(label, 'job', 'position'): answer = "https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot"
                 elif label_has(label, 'state', 'province'): answer = state
                 elif label_has(label, 'zip', 'zipcode', 'postal', 'postcode', 'code'): answer = zipcode
                 elif label_has(label, 'country'): answer = country
@@ -2448,7 +2446,7 @@ def run(total_runs: int) -> int:
 linkedIn_tab = False
 
 def main() -> None:
-    pyautogui.alert("Please consider sponsoring this project at:\n\nhttps://github.com/sponsors/GodsScion\n\n", "Support the project", "Okay")
+    pyautogui.alert("Built by Mohd Rizwan\n\nhttps://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot\n\n", "LinkedIn Auto Apply Bot", "Okay")
     total_runs = 1
     try:
         global linkedIn_tab, tabs_count, useNewResume, aiClient
@@ -2506,10 +2504,10 @@ def main() -> None:
         print_lg("Irrelevant jobs skipped:        {}\n".format(skip_count))
         if randomly_answered_questions: print_lg("\n\nQuestions randomly answered:\n  {}  \n\n".format(";\n".join(str(question) for question in randomly_answered_questions)))
         quotes = choice([
-            "Never quit. You're one step closer than before. - Sai Vignesh Golla", 
-            "All the best with your future interviews, you've got this. - Sai Vignesh Golla", 
-            "Keep up with the progress. You got this. - Sai Vignesh Golla", 
-            "If you're tired, learn to take rest but never give up. - Sai Vignesh Golla",
+            "Never quit. You're one step closer than before. - Mohd Rizwan", 
+            "All the best with your future interviews, you've got this. - Mohd Rizwan", 
+            "Keep up with the progress. You got this. - Mohd Rizwan", 
+            "If you're tired, learn to take rest but never give up. - Mohd Rizwan",
             "Success is not final, failure is not fatal, It is the courage to continue that counts. - Winston Churchill (Not a sponsor)",
             "Believe in yourself and all that you are. Know that there is something inside you that is greater than any obstacle. - Christian D. Larson (Not a sponsor)",
             "Every job is a self-portrait of the person who does it. Autograph your work with excellence. - Jessica Guidobono (Not a sponsor)",
@@ -2519,13 +2517,12 @@ def main() -> None:
             "Obstacles are those frightful things you see when you take your eyes off your goal. - Henry Ford (Not a sponsor)",
             "The only limit to our realization of tomorrow will be our doubts of today. - Franklin D. Roosevelt (Not a sponsor)",
             ])
-        sponsors = "Be the first to have your name here!"
         timeSaved = (easy_applied_count * 80) + (external_jobs_count * 20) + (skip_count * 10)
         timeSavedMsg = ""
         if timeSaved > 0:
             timeSaved += 60
-            timeSavedMsg = f"In this run, you saved approx {round(timeSaved/60)} mins ({timeSaved} secs), please consider supporting the project."
-        msg = f"{quotes}\n\n\n{timeSavedMsg}\nYou can also get your quote and name shown here, or prioritize your bug reports by supporting the project at:\n\nhttps://github.com/sponsors/GodsScion\n\n\nSummary:\n{summary}\n\n\nBest regards,\nSai Vignesh Golla\nhttps://www.linkedin.com/in/saivigneshgolla/\n\nTop Sponsors:\n{sponsors}"
+            timeSavedMsg = f"In this run, you saved approx {round(timeSaved/60)} mins ({timeSaved} secs)."
+        msg = f"{quotes}\n\n\n{timeSavedMsg}\n\nSummary:\n{summary}\n\n\nBest regards,\nMohd Rizwan\nhttps://www.linkedin.com/in/rizwansaifi2614/"
         pyautogui.alert(msg, "Exiting..")
         print_lg(msg,"Closing the browser...")
         if tabs_count >= 10:

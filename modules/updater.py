@@ -1,8 +1,8 @@
 '''
-Author:     Sai Vignesh Golla
+Author:     Mohd Rizwan
 License:    MIT License
             https://opensource.org/license/mit
-GitHub:     https://github.com/GodsScion/Auto_job_applier_linkedIn
+GitHub:     https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 
 version:    26.01.20.5.08
 
@@ -19,7 +19,7 @@ import subprocess
 import urllib.request
 from pathlib import Path
 
-REPO = "GodsScion/Auto_job_applier_linkedIn"
+REPO = "Rizwansaifi571/Linkedin-AutoApply-Bot"
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = ROOT / "VERSION"
 # raw.githubusercontent, NOT the API: the API allows 60 requests/hour per IP,

@@ -1,7 +1,7 @@
 '''
-Author:   Sai Vignesh Golla
+Author:   Mohd Rizwan
 License:  MIT License  (https://opensource.org/license/mit)
-GitHub:   https://github.com/GodsScion/Auto_job_applier_linkedIn
+GitHub:   https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 
 Shared fixtures and a custom test-summary printed after every run:
 failing tests first, then counts (ran / passed / failed / skipped), then an

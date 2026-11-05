@@ -1,13 +1,13 @@
 '''
-Author:     Sai Vignesh Golla
-LinkedIn:   https://www.linkedin.com/in/saivigneshgolla/
+Author:     Mohd Rizwan
+LinkedIn:   https://www.linkedin.com/in/rizwansaifi2614/
 
-Copyright (c) 2024-2026 Sai Vignesh Golla
+Copyright (c) 2026 Mohd Rizwan
 
 License:    MIT License
             https://opensource.org/license/mit
             
-GitHub:     https://github.com/GodsScion/Auto_job_applier_linkedIn
+GitHub:     https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 
 version:    2024.11.28.16.00
 '''
@@ -19,12 +19,12 @@ version:    2024.11.28.16.00
 # >>>>>>>>>>> Easy Apply Questions & Inputs <<<<<<<<<<<
 
 # Your legal name
-first_name = "Sai"                 # Your first name in quotes Eg: "First", "Sai"
-middle_name = "Vignesh"            # Your name in quotes Eg: "Middle", "Vignesh", ""
-last_name = "Golla"                # Your last name in quotes Eg: "Last", "Golla"
+first_name = "Mohd"                # Your first name in quotes Eg: "First", "Mohd"
+middle_name = ""                   # Your name in quotes Eg: "Middle", ""
+last_name = "Rizwan"               # Your last name in quotes Eg: "Last", "Rizwan"
 
 # Phone number (required), make sure it's valid.
-phone_number = "9876543210"        # Enter your 10 digit number in quotes Eg: "9876543210"
+phone_number = "8745943319"        # Enter your 10 digit number in quotes Eg: "9876543210"
 
 # What is your current city?
 current_city = ""                  # Los Angeles, San Francisco, etc.
@@ -74,14 +74,12 @@ THANK YOU for using my tool 😊! Wishing you the best in your job hunt 🙌🏻
 
 Sharing is caring! If you found this tool helpful, please share it with your peers 🥺. Your support keeps this project alive.
 
-Support my work on <PATREON_LINK>. Together, we can help more job seekers.
-
 As an independent developer, I pour my heart and soul into creating tools like this, driven by the genuine desire to make a positive impact.
 
 Your support, whether through donations big or small or simply spreading the word, means the world to me and helps keep this project alive and thriving.
 
 Gratefully yours 🙏🏻,
-Sai Vignesh Golla
+Mohd Rizwan
 '''
 
 # --- Load user settings saved by the local control panel (user_config.json).

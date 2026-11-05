@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# Author:  Sai Vignesh Golla
+# Author:  Mohd Rizwan
 # License: MIT License
 #          https://opensource.org/license/mit
-# GitHub:  https://github.com/GodsScion/Auto_job_applier_linkedIn
+# GitHub:  https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot
 #
 # One-click launcher for Linux. Run it with:  ./start.sh
 # It sets up everything the first time, then opens the control panel in your web

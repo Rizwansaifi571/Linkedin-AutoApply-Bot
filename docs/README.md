@@ -30,7 +30,7 @@ One page per file in `config/`.
 | [Contributors and the MIT relicense record](contributor-consent/contributors.md) | Acknowledgements for the AGPL-era contributors, and how the relicense was done |
 | [Disclaimer, Terms and License](legal.md) | Read this before you use the tool |
 | [Support and community](support.md) | Discord, GitHub Discussions, socials, sponsoring |
-| [Releases](https://github.com/GodsScion/Auto_job_applier_linkedIn/releases) | Version history and release notes |
+| [Releases](https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot/releases) | Version history and release notes |
 
 ---
 

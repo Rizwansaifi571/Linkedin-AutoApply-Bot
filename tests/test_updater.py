@@ -151,7 +151,7 @@ def test_latest_version_enforces_the_timeout(monkeypatch):
 # ---------------------------------------------------------------------------
 # self_update()
 # ---------------------------------------------------------------------------
-_ORIGIN = "https://github.com/GodsScion/Auto_job_applier_linkedIn.git\n"
+_ORIGIN = "https://github.com/Rizwansaifi571/Linkedin-AutoApply-Bot.git\n"
 
 
 def test_self_update_restores_the_stash_when_the_pull_fails(monkeypatch):

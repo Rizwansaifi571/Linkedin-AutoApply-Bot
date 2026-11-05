@@ -4,6 +4,13 @@ Auto Job Applier — licensing notice
 This project is licensed under the MIT License. See the LICENSE file for the
 full text.
 
+Acknowledgement
+---------------
+This project began as a fork of "Auto Job Applier" by Sai Vignesh Golla
+(https://github.com/GodsScion/Auto_job_applier_linkedIn). Thank you, Sai, for the
+foundation. Since then the code has been extensively reworked and extended by
+Mohd Rizwan, who maintains this version.
+
 Relicensing history
 -------------------
 Releases prior to the MIT relicense (August 2026) were distributed under the

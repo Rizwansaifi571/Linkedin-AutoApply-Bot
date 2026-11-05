@@ -35,6 +35,12 @@ Please consider the following:
 ## License
 
 Copyright (c) 2026 Mohd Rizwan
+Copyright (c) 2024-2026 Sai Vignesh Golla (original project)
+
+**Acknowledgement:** this project began as a fork of
+[Auto Job Applier](https://github.com/GodsScion/Auto_job_applier_linkedIn) by Sai Vignesh Golla,
+released under the MIT License. Thank you for the foundation. This version has since been
+extensively reworked and is maintained by Mohd Rizwan.
 
 This project is licensed under the **MIT License**. You are free to use, copy, modify, and
 distribute it — including in commercial and closed-source work — as long as the copyright

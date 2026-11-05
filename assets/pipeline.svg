@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="240" viewBox="0 0 1200 240" role="img" aria-label="Pipeline: Configure, Search, Filter, Easy Apply, Answer, Submit and log">
+  <defs>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0A66C2"/>
+      <stop offset="0.5" stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .t{font-family:"Segoe UI",Helvetica,Arial,sans-serif;text-anchor:middle}
+      .n{font-size:15px;font-weight:700;fill:#fff}
+      .s{font-size:12.5px;font-weight:500;fill:#64748B}
+      .l{font-size:22px;fill:#fff}
+      .node{animation:pulse 3s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+      .d1{animation-delay:0s}.d2{animation-delay:.5s}.d3{animation-delay:1s}.d4{animation-delay:1.5s}.d5{animation-delay:2s}.d6{animation-delay:2.5s}
+      @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+      @media (prefers-color-scheme: dark){.s{fill:#A5B4FC}}
+    </style>
+  </defs>
+
+  <!-- track -->
+  <path id="track" d="M100 110 H1100" stroke="url(#line)" stroke-width="5" stroke-linecap="round" opacity=".25"/>
+  <path d="M100 110 H1100" stroke="url(#line)" stroke-width="5" stroke-linecap="round" stroke-dasharray="14 12">
+    <animate attributeName="stroke-dashoffset" values="0;-52" dur="1.2s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- travelling packet -->
+  <g filter="url(#soft)">
+    <circle r="11" fill="#fff" stroke="#7C3AED" stroke-width="3">
+      <animateMotion dur="7s" repeatCount="indefinite" path="M100 110 H1100"/>
+    </circle>
+  </g>
+
+  <!-- nodes -->
+  <g class="t">
+    <g class="node d1"><circle cx="100" cy="110" r="38" fill="#0A66C2"/><text class="l" x="100" y="118">⚙</text></g>
+    <text class="n" x="100" y="175" style="fill:#0A66C2">Configure</text><text class="s" x="100" y="195">profile &amp; answers</text>
+
+    <g class="node d2"><circle cx="280" cy="110" r="38" fill="#2563EB"/><text class="l" x="280" y="118">⌕</text></g>
+    <text class="n" x="280" y="175" style="fill:#2563EB">Search</text><text class="s" x="280" y="195">LinkedIn filters</text>
+
+    <g class="node d3"><circle cx="460" cy="110" r="38" fill="#7C3AED"/><text class="l" x="460" y="118">⛨</text></g>
+    <text class="n" x="460" y="175" style="fill:#7C3AED">Filter</text><text class="s" x="460" y="195">skip bad matches</text>
+
+    <g class="node d4"><circle cx="640" cy="110" r="38" fill="#9333EA"/><text class="l" x="640" y="118">⚡</text></g>
+    <text class="n" x="640" y="175" style="fill:#9333EA">Easy Apply</text><text class="s" x="640" y="195">open the form</text>
+
+    <g class="node d5"><circle cx="820" cy="110" r="38" fill="#DB2777"/><text class="l" x="820" y="118">✎</text></g>
+    <text class="n" x="820" y="175" style="fill:#DB2777">Answer</text><text class="s" x="820" y="195">bank, then AI</text>
+
+    <g class="node d6"><circle cx="1000" cy="110" r="38" fill="#10B981"/><text class="l" x="1000" y="118">✔</text></g>
+    <text class="n" x="1000" y="175" style="fill:#10B981">Submit &amp; log</text><text class="s" x="1000" y="195">history + screenshots</text>
+  </g>
+</svg>

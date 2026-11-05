@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-label="LinkedIn Auto Apply Bot">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0A66C2">
+        <animate attributeName="stop-color" values="#0A66C2;#7C3AED;#EC4899;#7C3AED;#0A66C2" dur="14s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="55%" stop-color="#7C3AED">
+        <animate attributeName="stop-color" values="#7C3AED;#EC4899;#0A66C2;#EC4899;#7C3AED" dur="14s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#EC4899">
+        <animate attributeName="stop-color" values="#EC4899;#0A66C2;#7C3AED;#0A66C2;#EC4899" dur="14s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="orb" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="card"><rect width="1200" height="340" rx="28"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#card)">
+    <rect width="1200" height="340" fill="url(#bg)"/>
+
+    <!-- floating orbs -->
+    <circle r="120" fill="url(#orb)" cx="180" cy="80">
+      <animate attributeName="cx" values="180;260;180" dur="9s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="80;140;80" dur="11s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="150" fill="url(#orb)" cx="1010" cy="260">
+      <animate attributeName="cx" values="1010;930;1010" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="260;190;260" dur="10s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="90" fill="url(#orb)" cx="620" cy="40">
+      <animate attributeName="cx" values="620;700;620" dur="8s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- drifting particles -->
+    <g fill="#fff">
+      <circle cx="90" cy="300" r="3" opacity=".7"><animate attributeName="cy" values="320;-10" dur="7s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.8;0" dur="7s" repeatCount="indefinite"/></circle>
+      <circle cx="300" cy="320" r="2" opacity=".7"><animate attributeName="cy" values="340;-10" dur="9s" begin="1s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.8;0" dur="9s" begin="1s" repeatCount="indefinite"/></circle>
+      <circle cx="520" cy="320" r="3" opacity=".7"><animate attributeName="cy" values="340;-10" dur="8s" begin="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.8;0" dur="8s" begin="2s" repeatCount="indefinite"/></circle>
+      <circle cx="760" cy="320" r="2" opacity=".7"><animate attributeName="cy" values="340;-10" dur="10s" begin="0.5s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.8;0" dur="10s" begin="0.5s" repeatCount="indefinite"/></circle>
+      <circle cx="980" cy="320" r="3" opacity=".7"><animate attributeName="cy" values="340;-10" dur="7.5s" begin="3s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.8;0" dur="7.5s" begin="3s" repeatCount="indefinite"/></circle>
+      <circle cx="1120" cy="320" r="2" opacity=".7"><animate attributeName="cy" values="340;-10" dur="9.5s" begin="1.5s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.8;0" dur="9.5s" begin="1.5s" repeatCount="indefinite"/></circle>
+    </g>
+
+    <!-- grid lines -->
+    <g stroke="#fff" stroke-opacity=".07">
+      <path d="M0 85H1200M0 170H1200M0 255H1200"/>
+      <path d="M200 0V340M400 0V340M600 0V340M800 0V340M1000 0V340"/>
+    </g>
+
+    <!-- LinkedIn-style badge -->
+    <g transform="translate(556 40)">
+      <rect width="88" height="88" rx="18" fill="#fff" opacity=".95" filter="url(#glow)">
+        <animate attributeName="opacity" values=".95;.8;.95" dur="3s" repeatCount="indefinite"/>
+      </rect>
+      <text x="44" y="64" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-weight="800" font-size="58" fill="#0A66C2">in</text>
+      <animateTransform attributeName="transform" type="translate" values="556 40;556 32;556 40" dur="4s" repeatCount="indefinite"/>
+    </g>
+
+    <!-- title -->
+    <g font-family="Segoe UI, Helvetica, Arial, sans-serif" text-anchor="middle" fill="#fff">
+      <text x="600" y="198" font-size="58" font-weight="800" filter="url(#glow)">LinkedIn Auto Apply Bot
+        <animate attributeName="opacity" from="0" to="1" dur="1.2s" fill="freeze"/>
+      </text>
+      <text x="600" y="240" font-size="22" font-weight="500" opacity=".92">Apply smarter. Stay in control. Land interviews faster.
+        <animate attributeName="opacity" values="0;0;.92" keyTimes="0;.4;1" dur="2s" fill="freeze"/>
+      </text>
+    </g>
+
+    <!-- pills -->
+    <g font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" text-anchor="middle" fill="#fff">
+      <g>
+        <rect x="318" y="268" width="150" height="34" rx="17" fill="#fff" fill-opacity=".18" stroke="#fff" stroke-opacity=".45"/>
+        <text x="393" y="290">Local-first</text>
+      </g>
+      <g>
+        <rect x="486" y="268" width="150" height="34" rx="17" fill="#fff" fill-opacity=".18" stroke="#fff" stroke-opacity=".45"/>
+        <text x="561" y="290">Answer bank</text>
+      </g>
+      <g>
+        <rect x="654" y="268" width="150" height="34" rx="17" fill="#fff" fill-opacity=".18" stroke="#fff" stroke-opacity=".45"/>
+        <text x="729" y="290">Optional AI</text>
+      </g>
+      <g>
+        <rect x="822" y="268" width="150" height="34" rx="17" fill="#fff" fill-opacity=".18" stroke="#fff" stroke-opacity=".45"/>
+        <text x="897" y="290">Reviewable</text>
+      </g>
+    </g>
+
+    <!-- moving shine sweep -->
+    <rect x="-400" y="0" width="400" height="340" fill="url(#shine)" opacity=".5">
+      <animate attributeName="x" values="-400;1200" dur="6s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>

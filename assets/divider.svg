@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="10" viewBox="0 0 1200 10" role="presentation">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#0A66C2"/>
+      <stop offset="0.5" stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="glint" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="c"><rect x="0" y="3" width="1200" height="4" rx="2"/></clipPath>
+  </defs>
+  <rect x="0" y="3" width="1200" height="4" rx="2" fill="url(#g)" opacity=".85"/>
+  <g clip-path="url(#c)">
+    <rect x="-300" y="0" width="300" height="10" fill="url(#glint)">
+      <animate attributeName="x" values="-300;1200" dur="3.2s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <circle cy="5" r="5" fill="#fff" stroke="#7C3AED" stroke-width="2">
+    <animate attributeName="cx" values="0;1200" dur="3.2s" repeatCount="indefinite"/>
+  </circle>
+</svg>

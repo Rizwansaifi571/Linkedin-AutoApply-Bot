@@ -26,6 +26,19 @@ def bot():
     return runAiBot
 
 
+class FakeDriver:
+    '''Stand-in for the WebDriver: every XPath resolves to the same description element(s).'''
+
+    def __init__(self, elements):
+        self.elements = elements
+
+    def find_elements(self, by, locator):
+        return list(self.elements)
+
+    def execute_script(self, *args, **kwargs):
+        return None
+
+
 class FakeElement:
     '''Stand-in for a WebElement: `children` maps an XPath/class to what it resolves to.'''
 
@@ -47,6 +60,9 @@ class FakeElement:
 
     def is_selected(self):
         return False
+
+    def is_displayed(self):
+        return True
 
     def find_element(self, by, locator):
         if locator in self.children:
@@ -118,8 +134,8 @@ def test_a_javascript_job_is_not_skipped_by_the_bad_word_java(bot, monkeypatch):
     monkeypatch.setattr(bot, "security_clearance", True)     # keep the clearance scan out of it
     monkeypatch.setattr(bot, "current_experience", -1)
     monkeypatch.setattr(bot, "print_lg", lambda *a, **k: None)
-    monkeypatch.setattr(bot, "find_by_class",
-                        lambda *a, **k: FakeElement(text="Senior JavaScript engineer, React and Node."))
+    monkeypatch.setattr(bot, "driver",
+                        FakeDriver([FakeElement(text="Senior JavaScript engineer, React and Node.")]), raising=False)
 
     description, experience, skip, reason, message = bot.get_job_description()
 
@@ -134,19 +150,15 @@ def test_recommended_filter_wait_is_not_inverted(bot):
     assert bot.recommended_filter_wait(0) == 0    # only "no click gap" means no pause
 
 
-# -------------------- B: an unreadable job description must skip -------------------
-def test_unreadable_job_description_skips_the_job(bot, monkeypatch):
-    def boom(*args, **kwargs):
-        raise NoSuchElementException("jobs-box__html-content")
-
-    monkeypatch.setattr(bot, "find_by_class", boom)
+# ---------- B: an unreadable job description no longer blocks the application ----------
+def test_unreadable_job_description_does_not_skip_the_job(bot, monkeypatch):
+    monkeypatch.setattr(bot, "driver", FakeDriver([]), raising=False)
     monkeypatch.setattr(bot, "print_lg", lambda *a, **k: None)
 
     description, experience, skip, reason, message = bot.get_job_description()
 
     assert description == "Unknown"
-    assert skip is True          # never apply to a job whose description we never read
-    assert reason and message
+    assert skip is False         # by design: apply anyway, the description filters are best-effort
 
 
 # ------------------ H: a run where nothing applied must not report zeros -----------

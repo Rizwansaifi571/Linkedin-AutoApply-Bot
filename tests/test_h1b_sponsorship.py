@@ -43,10 +43,29 @@ def bot():
 
 
 class FakeDescription:
-    '''Stand-in for the "jobs-box__html-content" WebElement: it only needs `.text`.'''
+    '''Stand-in for the job-description WebElement.'''
 
     def __init__(self, text):
         self.text = text
+
+    def is_displayed(self):
+        return True
+
+    def get_attribute(self, name):
+        return self.text if name in ("innerText", "textContent") else None
+
+
+class FakeDriver:
+    '''Stand-in for the WebDriver: every XPath resolves to the same description element(s).'''
+
+    def __init__(self, elements):
+        self.elements = elements
+
+    def find_elements(self, by, locator):
+        return list(self.elements)
+
+    def execute_script(self, *args, **kwargs):
+        return None
 
 
 OFFERED = ["visa sponsorship available", "sponsorship available", "sponsorship is available",
@@ -79,7 +98,7 @@ def pinned_config(bot, monkeypatch):
 
 def scan(bot, monkeypatch, description):
     '''Run the real get_job_description over one faked job description.'''
-    monkeypatch.setattr(bot, "find_by_class", lambda *a, **k: FakeDescription(description))
+    monkeypatch.setattr(bot, "driver", FakeDriver([FakeDescription(description)]), raising=False)
     _description, _experience, skip, reason, message = bot.get_job_description()
     return skip, reason, message
 

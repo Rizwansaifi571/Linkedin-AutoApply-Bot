@@ -761,7 +761,8 @@ def match_answer_to_option(answer: str | None, option_texts: list[str]) -> int |
     if not answer: return None
     want_negative = None            # None = the answer has no Yes/No polarity
     if find_bad_word(answer, decline_terms):
-        candidate_phrases = ["Decline", "not wish", "don't wish", "Prefer not", "not want"]
+        candidate_phrases = ["Decline", "not wish", "don't wish", "Prefer not", "not want",
+                             "Choose NOT", "not to identify", "not to specify", "not to answer"]
     elif find_bad_word(answer, ['yes']):
         candidate_phrases = ["Yes", "Agree", "I do", "I have"]
         want_negative = False

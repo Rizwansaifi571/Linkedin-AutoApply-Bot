@@ -1916,6 +1916,24 @@ def _configured_url_filters() -> dict[str, str]:
     return filters
 
 
+def _remove_url_filters(params: dict[str, str]) -> None:
+    '''
+    Drop the filters named in `remove_url_filters` from `params`. An entry is either a
+    parameter name ("f_WT": the whole filter) or "name=value" ("f_WT=2": just that value,
+    so Remote can go while On-site and Hybrid stay). Names are case-insensitive.
+    '''
+    for entry in globals().get("remove_url_filters", []) or []:
+        name, _, value = str(entry).strip().partition("=")
+        key = next((k for k in params if k.lower() == name.strip().lower()), None)
+        if key is None or key in ("keywords", "location", "geoId"): continue
+        if not value.strip():
+            del params[key]
+            continue
+        kept = [part for part in str(params[key]).replace("%2C", ",").split(",") if part != value.strip()]
+        if kept: params[key] = ",".join(kept)
+        else: del params[key]
+
+
 # Function to apply to jobs
 def _search_url(query: str) -> str:
     '''Build a Jobs URL with the configured, stable URL filters for every term.'''
@@ -1939,6 +1957,7 @@ def _search_url(query: str) -> str:
         for key, value in parse_qsl(filter_query, keep_blank_values=True):
             if key not in {"keywords", "location", "geoId", "currentJobId", "origin", "referralSearchId"}:
                 params[key] = value
+    _remove_url_filters(params)
     # This is the current Jobs route. The previous /jobs/search/ route can
     # redirect slowly enough that the old five-second card wait expires.
     return "https://www.linkedin.com/jobs/search-results/?" + urlencode(params)

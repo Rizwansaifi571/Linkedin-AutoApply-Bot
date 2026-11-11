@@ -30,6 +30,11 @@ job_description = ""
 # Anything set here wins over the same filter derived from the options below.
 linkedin_filter_query = ""
 
+# Filters to REMOVE from the search URL, whatever the options above or the pasted query put there.
+# "f_WT" drops the whole work-type filter; "f_WT=2" drops only Remote and keeps On-site/Hybrid.
+# Eg: ["f_WT=2"]   Other keys: f_TPR (date), f_AL (Easy Apply), f_E (experience), f_JT (job type), f_SAL (salary)
+remove_url_filters = []            # A list of URL parameter names, or "name=value" pairs
+
 # Open LinkedIn's "All filters" dialog instead of putting the filters in the URL? (Slower and less reliable)
 apply_filters_in_browser = False   # True or False, Note: True or False are case-sensitive
 

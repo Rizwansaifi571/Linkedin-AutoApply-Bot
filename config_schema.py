@@ -193,6 +193,8 @@ SCHEMA = [
                "Where to look for jobs. Defaults to India. Examples: India, 'Delhi, India', 'Bengaluru, Karnataka, India'. Leave blank to not set a location."),
             _f("Search", "search", "linkedin_filter_query", "LinkedIn URL filters", "text",
                "Filters to use for every search, copied from a working LinkedIn Jobs URL after the ?. Example: f_TPR=r604800&f_AL=true. This avoids opening LinkedIn's unstable filter dialog."),
+            _f("Search", "search", "remove_url_filters", "LinkedIn URL filters to remove", "list",
+               "Filters to take out of the search URL. Use a name like f_WT to drop the whole filter, or name=value like f_WT=2 to drop only Remote. Other names: f_TPR (date), f_AL (Easy Apply), f_E (experience), f_JT (job type), f_SAL (salary).", advanced=True),
             _f("Search", "search", "apply_filters_in_browser", "Open LinkedIn's filter dialog", "bool",
                "Leave off to use the URL filters above. Turn on only for filters that cannot be placed in the URL; LinkedIn frequently changes this dialog.", advanced=True),
             _f("Search", "search", "date_posted", "Date posted", "select",

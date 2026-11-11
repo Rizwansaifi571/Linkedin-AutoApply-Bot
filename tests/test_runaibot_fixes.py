@@ -191,3 +191,25 @@ def test_easy_apply_detection_is_an_ordered_fallback_list(bot):
 # ------------------------------- M: the no-submit flag -----------------------------
 def test_stop_before_submit_setting_is_always_defined(bot):
     assert isinstance(bot.stop_before_submit, bool)
+
+
+# ------------------------- URL filters can be removed from the search -------------------
+def test_remove_url_filters_drops_only_the_named_remote_value(bot, monkeypatch):
+    monkeypatch.setattr(bot, "remove_url_filters", ["f_WT=2"], raising=False)
+    params = {"keywords": "Python", "f_WT": "1,2,3", "f_AL": "true"}
+    bot._remove_url_filters(params)
+    assert params == {"keywords": "Python", "f_WT": "1,3", "f_AL": "true"}
+
+
+def test_remove_url_filters_drops_a_whole_filter_and_never_the_search_itself(bot, monkeypatch):
+    monkeypatch.setattr(bot, "remove_url_filters", ["F_wt", "keywords"], raising=False)
+    params = {"keywords": "Python", "f_WT": "2"}
+    bot._remove_url_filters(params)
+    assert params == {"keywords": "Python"}
+
+
+def test_remove_url_filters_removing_the_last_value_removes_the_filter(bot, monkeypatch):
+    monkeypatch.setattr(bot, "remove_url_filters", ["f_WT=2"], raising=False)
+    params = {"f_WT": "2"}
+    bot._remove_url_filters(params)
+    assert params == {}
